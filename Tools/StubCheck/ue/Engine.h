@@ -1,0 +1,22 @@
+// Тяжёлые сборные заголовки: допустимы, но лучше подключать нужные явно.
+#pragma once
+// TP_STUB_MODULE: Engine
+#include "CoreMinimal.h"
+#include "UObject/Object.h"
+#include "Engine/EngineTypes.h"
+#include "Engine/World.h"
+#include "GameFramework/Actor.h"
+#include "GameFramework/Pawn.h"
+#include "GameFramework/Character.h"
+#include "GameFramework/Controller.h"
+#include "GameFramework/PlayerController.h"
+#include "Components/ActorComponent.h"
+#include "Components/SceneComponent.h"
+#include "Components/PrimitiveComponent.h"
+#include "Components/StaticMeshComponent.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Components/CapsuleComponent.h"
+#include "GameFramework/CharacterMovementComponent.h"
+#include "Kismet/GameplayStatics.h"
+#include "TimerManager.h"
+#include "EngineUtils.h"
