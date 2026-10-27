@@ -122,5 +122,6 @@ void ATPEnvironment::ApplyTime()
 	{
 		LampLevel = Lamp;
 		for (UPointLightComponent* L : Lamps) if (L) L->SetIntensity(Lamp * 1600.f);
+		if (UWorld* W = GetWorld()) for (TActorIterator<ATPCityGenerator> It(W); It; ++It) It->SetLampGlow(Lamp);   // стёкла фонарей светятся только в темноте
 	}
 }

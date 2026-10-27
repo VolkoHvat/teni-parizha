@@ -5,10 +5,12 @@
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "TPTypes.h"
+#include "TPTraversalSensors.h"
 #include "TPTraversalComponent.generated.h"
 
 class ACharacter;
 class UAnimMontage;
+class UCharacterMovementComponent;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FTPTraversalStateChanged, ETPTraversal, OldState, ETPTraversal, NewState);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FTPLanded, float, FallHeightCm, bool, bSoftSurface);
@@ -77,6 +79,45 @@ public:
 	/** показывать отладочные трассировки */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Паркур") bool bDebugDraw = false;
 
+	/* ---- дополнительные параметры (агент «паркур») ---- */
+	/** скорость крадущегося шага (присед), см/с */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Паркур") float CrouchSpeed = 160.f;
+	/** урон за каждый сантиметр падения выше HurtHeight */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Паркур") float FallDamagePerCm = 0.12f;
+	/** центр капсулы в висе ниже кромки уступа, см (руки манекена — у кромки) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Паркур|Вис") float HangCenterBelowEdge = 115.f;
+	/** отступ центра капсулы от стены в висе и при лазании, см */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Паркур|Вис") float HangWallOffset = 40.f;
+	/** половина расстояния между руками на кромке (для IK), см */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Паркур|Вис") float HandSpread = 22.f;
+
+	/* длительности действий без монтажей, с (если монтаж задан — берётся его длительность) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Паркур|Тайминги") float VaultTime = 0.6f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Паркур|Тайминги") float ClimbUpTime = 0.9f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Паркур|Тайминги") float DropTime = 0.7f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Паркур|Тайминги") float HopTime = 0.75f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Паркур|Тайминги") float RollTime = 0.7f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Паркур|Тайминги") float TurnTime = 0.45f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Паркур|Тайминги") float LandSoftTime = 0.3f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Паркур|Тайминги") float LandHardTime = 0.7f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Паркур|Тайминги") float MantleTime = 0.6f;
+
+	/** забраться с земли на невысокий уступ (~130–180 см), на который можно встать (необязателен) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Паркур|Анимации") TObjectPtr<UAnimMontage> MontageMantle;
+
+	/* ---- данные для анимации (UTPTraversalAnimInstance) ---- */
+	/** скорость проигрывания цикла лазания (0 — стоит на стене) */
+	UFUNCTION(BlueprintPure, Category = "Паркур|Анимация") float GetClimbAnimRate() const { return ClimbAnimRate; }
+	/** -1 влево, +1 вправо (перебежка в висе / сдвиг при лазании) */
+	UFUNCTION(BlueprintPure, Category = "Паркур|Анимация") float GetShimmyDir() const { return ShimmyDir; }
+	/** наклон корпуса в повороте на бегу, градусы (+ вправо) */
+	UFUNCTION(BlueprintPure, Category = "Паркур|Анимация") float GetLeanAngle() const { return LeanAngle; }
+	UFUNCTION(BlueprintPure, Category = "Паркур|Анимация") bool IsCrouching() const { return Input.bCrouch; }
+	/** высота последнего падения, см */
+	UFUNCTION(BlueprintPure, Category = "Паркур") float GetLastFallHeight() const { return LastFallHeight; }
+	/** мировые точки рук на кромке/стене; возвращает вес IK 0..1 */
+	UFUNCTION(BlueprintPure, Category = "Паркур|Анимация") float GetHandIK(FVector& OutLeft, FVector& OutRight) const;
+
 protected:
 	UPROPERTY(Transient) TObjectPtr<ACharacter> Owner;
 	ETPTraversal State = ETPTraversal::Ground;
@@ -85,4 +126,86 @@ protected:
 	float PendingDamage = 0.f;
 	float StateTime = 0.f;
 	void SetState(ETPTraversal NewState);
+
+	/* ---- внутреннее состояние ---- */
+	FTPTraversalSensors Sensors;
+	float CapsuleRadius = 38.f;
+	float CapsuleHalfHeight = 92.f;
+	/** верхняя точка ног в полёте (для высоты падения) */
+	float AirTopZ = 0.f;
+	/** персонаж действительно оторвался от земли после толчка */
+	bool bLeftGround = false;
+	float LastFallHeight = 0.f;
+	/** не хвататься снова за только что пройденный карниз (высота кромки) */
+	float IgnoreTopZ = FTPTraversalSensors::NoFloor;
+	/** кинематическое действие: откуда/куда (центр капсулы), поворот, длительность, высота дуги */
+	FVector ActFrom = FVector::ZeroVector;
+	FVector ActTo = FVector::ZeroVector;
+	FQuat ActFromRot = FQuat::Identity;
+	FQuat ActToRot = FQuat::Identity;
+	float ActDur = 0.5f;
+	float ActArc = 0.f;
+	/** перемах закончится движением вперёд (false — запрыгнул на препятствие) */
+	bool bActKeepSpeed = true;
+	/** перемах-запрыгивание на широкое препятствие (сначала вверх, потом вперёд) */
+	bool bActMount = false;
+	/** подтягивание начато из виса (иначе — с земли) */
+	bool bActFromHang = true;
+	/** доли времени действия: подъём заканчивается в ActZEnd, перенос вперёд начинается в ActXStart */
+	float ActZEnd = 0.65f;
+	float ActXStart = 0.45f;
+	FTPLedge NextLedge;
+	float WallRunVz = 0.f;
+	float TurnFromYaw = 0.f;
+	float StateDuration = 0.f;
+	/** анимационные величины */
+	float ClimbAnimRate = 0.f;
+	float ShimmyDir = 0.f;
+	float LeanAngle = 0.f;
+	FVector ClimbWallNormal = FVector::ZeroVector;
+
+	/* ---- состояния ---- */
+	void UpdateGround(float Dt);
+	void UpdateAir(float Dt);
+	void UpdateLand(float Dt);
+	void UpdateRoll(float Dt);
+	void UpdateTurn(float Dt);
+	void UpdateClimb(float Dt);
+	void UpdateHang(float Dt);
+	void UpdateWallRun(float Dt);
+	void UpdateClimbUp(float Dt);
+	void UpdateVault(float Dt);
+	void UpdateDrop(float Dt);
+	void UpdateHop(float Dt);
+
+	/* ---- переходы ---- */
+	void EnterGround();
+	void EnterAir(const FVector& Velocity, float GrabDelay = 0.f);
+	void EnterJump(const FVector& LaunchVelocity, bool bOverrideXY);
+	void EnterHang(const FTPLedge& L);
+	void EnterClimb(const FVector& WallNormal);
+	void StartHop(const FTPLedge& L, float Duration);
+	bool TryStartVault(const FVector& Dir, float Reach);
+	/** уступ найден с земли: высокий — перескок в вис, низкий — подтянуться сразу (если можно встать) */
+	bool TryHangOrMantle(const FTPLedge& L);
+	/** подтянуться на уступ L (из виса или с земли) */
+	void StartClimbUp(const FTPLedge& L, bool bFromHang);
+	/** прыжок из виса вбок к уступу на расстоянии до ~2 м (Side = ±1) */
+	bool TryLateralHop(float Side);
+	void HandleLanding();
+
+	/* ---- вспомогательное ---- */
+	UCharacterMovementComponent* GetMove() const;
+	FVector GetFeet() const;
+	FVector GetFacing() const;
+	void HangTransform(const FTPLedge& L, FVector& OutCenter, FQuat& OutRot) const;
+	void AttachLedge(const FTPLedge& L);
+	void SetKinematic();
+	void PlaceActor(const FVector& Center, const FQuat& Rot);
+	bool EnsureCapsuleFree();
+	float PlayMontage(UAnimMontage* Montage, float Rate = 1.f);
+	void PlayLoop(UAnimMontage* Montage);
+	void StopLoops(float BlendOut = 0.2f);
+	/** проиграть монтаж действия (если задан) и вернуть длительность действия: его длину или Default */
+	float ActionDuration(UAnimMontage* Montage, float Default);
 };
