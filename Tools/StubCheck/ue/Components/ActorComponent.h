@@ -47,8 +47,6 @@ public:
 	virtual void BeginPlay();
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason);
 	virtual void TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction);
-	virtual void OnRegister();
-	virtual void OnUnregister();
 	virtual void OnComponentCreated();
 	virtual void OnComponentDestroyed(bool bDestroyingHierarchy);
 	virtual void DestroyComponent(bool bPromoteChildren = false);
@@ -76,6 +74,8 @@ public:
 	FString GetReadableName() const;
 	UWorld* GetWorld_Uncached() const;
 protected:
+	virtual void OnRegister();
+	virtual void OnUnregister();
 	uint8 bCanEverAffectNavigation : 1;
 	uint8 bTickInEditor : 1;
 	uint8 bNeverNeedsRenderUpdate : 1;

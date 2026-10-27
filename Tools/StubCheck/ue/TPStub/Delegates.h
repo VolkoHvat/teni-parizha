@@ -147,3 +147,6 @@ public:
 #define DECLARE_DYNAMIC_MULTICAST_SPARSE_DELEGATE_FourParams(D, Owner, Prop, T1, N1, T2, N2, T3, N3, T4, N4) class D : public TTPDynamicMulticastDelegate<T1, T2, T3, T4> {}
 #define DECLARE_DYNAMIC_MULTICAST_SPARSE_DELEGATE_SixParams(D, Owner, Prop, T1, N1, T2, N2, T3, N3, T4, N4, T5, N5, T6, N6) class D : public TTPDynamicMulticastDelegate<T1, T2, T3, T4, T5, T6> {}
 #define DECLARE_DYNAMIC_MULTICAST_SPARSE_DELEGATE_FiveParams(D, Owner, Prop, T1, N1, T2, N2, T3, N3, T4, N4, T5, N5) class D : public TTPDynamicMulticastDelegate<T1, T2, T3, T4, T5> {}
+
+DECLARE_DELEGATE(FSimpleDelegate);
+DECLARE_MULTICAST_DELEGATE(FSimpleMulticastDelegate);

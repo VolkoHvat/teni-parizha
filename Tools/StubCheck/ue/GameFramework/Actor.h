@@ -34,6 +34,7 @@ public:
 	FActorBeginOverlapSignature OnActorBeginOverlap; FActorEndOverlapSignature OnActorEndOverlap;
 	FActorHitSignature OnActorHit; FActorDestroyedSignature OnDestroyed; FActorEndPlaySignature OnEndPlay;
 
+	virtual UWorld* GetWorld() const override final;
 	virtual void PostInitializeComponents();
 	virtual void PreInitializeComponents();
 	virtual void OnConstruction(const FTransform& Transform);

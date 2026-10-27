@@ -51,6 +51,8 @@ void ATPBadActor::BeginPlay()
 	// ОЖИДАЕТСЯ: cannot bind to a value of unrelated type 'TArray<ACharacter *>'
 	Arr.RemoveAt(0, false);
 	// ОЖИДАЕТСЯ: второй параметр — Count, а не bAllowShrinking
+	const FRotator Neg = -GetActorRotation();
+	// ОЖИДАЕТСЯ: invalid argument type 'FRotator' to unary expression
 	float Speed = 1.f;
 	// ОЖИДАЕТСЯ: declaration shadows a field of 'ATPBadActor'
 	Speed += A + M + V3.X;

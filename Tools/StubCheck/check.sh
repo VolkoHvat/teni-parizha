@@ -37,7 +37,7 @@ INC=(-I"$HERE/ue" -I"$OUT/gen")
 for d in Public Private Classes; do [ -d "$SRC/$d" ] && INC+=(-I"$SRC/$d"); done
 INC+=(-I"$SRC")
 # Флаги: C++14 (стандарт по умолчанию в UE 4.27), затенение имён — ошибка (в UE 4.27 с V2 это ошибка C4456–C4459).
-FLAGS=(-std=c++14 -fsyntax-only -fno-color-diagnostics -ferror-limit=40 -DTENIPARIZHA_API= -DUE_BUILD_SHIPPING=0
+FLAGS=(-std=c++14 -fshort-wchar -fsyntax-only -fno-color-diagnostics -ferror-limit=40 -DTENIPARIZHA_API= -DUE_BUILD_SHIPPING=0
 	-Wall -Wno-unused-variable -Wno-unused-private-field -Wno-unused-function -Wno-unused-but-set-variable -Wno-unused-lambda-capture
 	-Wno-missing-braces -Wno-null-dereference -Wno-inconsistent-missing-override -Wno-unknown-pragmas -Wno-unused-const-variable
 	-Wno-deprecated-declarations -Wno-overloaded-virtual -Wno-invalid-offsetof -Wno-unused-value -Wno-delete-non-abstract-non-virtual-dtor

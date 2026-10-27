@@ -44,6 +44,10 @@ public:
 	void CalculateExtendedBounds();
 	void InitResources(); void ReleaseResources();
 	void SetLightingGuid();
+	FStaticMeshRenderData* GetRenderData() const; int32 GetLightMapResolution() const; void SetLightMapResolution(int32 InLightMapResolution);
+	int32 GetLightMapCoordinateIndex() const; void SetLightMapCoordinateIndex(int32 InIndex); void SetBodySetup(UBodySetup* InBodySetup);
+	UNavCollisionBase* GetNavCollision() const; const FBoxSphereBounds& GetExtendedBounds() const;
+	FVector GetPositiveBoundsExtension() const; void SetPositiveBoundsExtension(FVector InExt); FVector GetNegativeBoundsExtension() const; void SetNegativeBoundsExtension(FVector InExt);
 #if WITH_EDITOR
 	void Build(bool bInSilent = false, TArray<FText>* OutErrors = nullptr);
 	int32 GetNumSourceModels() const;

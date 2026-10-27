@@ -3,7 +3,7 @@
 // TP_STUB_MODULE: Engine
 #include "CoreMinimal.h"
 class UWorld;
-enum ETickableTickType { Conditional, Always, Never };
+enum class ETickableTickType : uint8 { Conditional, Always, Never };
 class FTickableObjectBase
 {
 public:

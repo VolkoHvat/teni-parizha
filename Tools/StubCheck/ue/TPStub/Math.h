@@ -330,7 +330,6 @@ struct FRotator
 	static const FRotator ZeroRotator;
 	FRotator(); explicit FRotator(float InF); FRotator(float InPitch, float InYaw, float InRoll); explicit FRotator(EForceInit); explicit FRotator(const FQuat& Quat);
 	FRotator operator+(const FRotator& R) const; FRotator operator-(const FRotator& R) const; FRotator operator*(float Scale) const; FRotator operator*=(float Scale);
-	FRotator operator-() const;
 	bool operator==(const FRotator& R) const; bool operator!=(const FRotator& V) const;
 	FRotator operator+=(const FRotator& R); FRotator operator-=(const FRotator& R);
 	bool IsNearlyZero(float Tolerance = KINDA_SMALL_NUMBER) const; bool IsZero() const;
@@ -622,3 +621,10 @@ struct FRandomStream
 template<class T> struct FInterpCurvePoint { float InVal; T OutVal; T ArriveTangent; T LeaveTangent; };
 template<class T> class FInterpCurve { public: TArray<FInterpCurvePoint<T>> Points; int32 AddPoint(const float InVal, const T& OutVal); T Eval(const float InVal, const T& Default = T()) const; };
 typedef FInterpCurve<float> FInterpCurveFloat; typedef FInterpCurve<FVector> FInterpCurveVector;
+
+// ---------- сериализация математических типов (FArchive) ----------
+FArchive& operator<<(FArchive& Ar, FVector& V); FArchive& operator<<(FArchive& Ar, FVector2D& V); FArchive& operator<<(FArchive& Ar, FVector4& V);
+FArchive& operator<<(FArchive& Ar, FRotator& R); FArchive& operator<<(FArchive& Ar, FQuat& Q); FArchive& operator<<(FArchive& Ar, FTransform& T);
+FArchive& operator<<(FArchive& Ar, FColor& C); FArchive& operator<<(FArchive& Ar, FLinearColor& C); FArchive& operator<<(FArchive& Ar, FIntPoint& P);
+FArchive& operator<<(FArchive& Ar, FIntVector& P); FArchive& operator<<(FArchive& Ar, FBox& B); FArchive& operator<<(FArchive& Ar, FGuid& G); FArchive& operator<<(FArchive& Ar, FDateTime& D);
+template<typename T, typename K, typename A> FArchive& operator<<(FArchive& Ar, TSet<T, K, A>& S);

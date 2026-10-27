@@ -11,15 +11,14 @@ public:
 	UStaticMeshComponent(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
 	int32 ForcedLodModel; int32 MinLOD; float StreamingDistanceMultiplier;
 	uint8 bOverrideMinLOD : 1; uint8 bOverrideLightMapRes : 1; uint8 bDisallowMeshPaintPerInstance : 1; uint8 bIgnoreInstanceForTextureStreaming : 1;
-	uint8 bUseDefaultCollision : 1; uint8 bEvaluateWorldPositionOffset : 1; uint8 bReverseCulling : 1; uint8 bSortTriangles_DEPRECATED : 1;
-	int32 OverriddenLightMapRes; int32 WorldPositionOffsetDisableDistance;
+	uint8 bUseDefaultCollision : 1; uint8 bReverseCulling : 1; uint8 bSortTriangles_DEPRECATED : 1;
+	int32 OverriddenLightMapRes;
 	virtual bool SetStaticMesh(UStaticMesh* NewMesh);
 	UStaticMesh* GetStaticMesh() const;
 	void SetForcedLodModel(int32 NewForcedLodModel);
 	void SetDistanceFieldSelfShadowBias(float NewValue);
 	void SetReverseCulling(bool ReverseCulling);
 	void GetLocalBounds(FVector& Min, FVector& Max) const;
-	virtual void SetEvaluateWorldPositionOffset(bool NewValue);
 private:
 	UStaticMesh* StaticMesh;
 };

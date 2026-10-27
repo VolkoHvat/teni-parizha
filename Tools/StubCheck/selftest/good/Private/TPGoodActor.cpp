@@ -204,6 +204,14 @@ void ATPGoodActor::BeginPlay()
 	const int32 Level = CVarTPGood.GetValueOnGameThread();
 	Accum += Level;
 	Info.Speed = GetVelocity().Size2D();
+	const AActor* Self = this;
+	TMap<AActor*, int32> Score; Score.Add(this, 1);
+	if (Found.Contains(Self) && Score.Find(Self)) Accum += 1.f;
+	GetCapsuleComponent()->CanCharacterStepUpOn = ECB_No;
+	const FString SavePath = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("TP"), TEXT("log.txt"));
+	FFileHelper::SaveStringToFile(Name, *SavePath, FFileHelper::EEncodingOptions::ForceUTF8);
+	FSimpleDelegate Simple = FSimpleDelegate::CreateUObject(this, &ATPGoodActor::OnTimer);
+	Simple.ExecuteIfBound();
 }
 
 void ATPGoodActor::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)

@@ -286,7 +286,7 @@ public:
 	void Swap(int32 A, int32 B);
 	void SwapMemory(int32 A, int32 B);
 
-	bool Contains(const InElementType& Item) const;
+	template<typename ComparisonType> bool Contains(const ComparisonType& Item) const { (void)(TPStubRef<const InElementType>() == Item); return false; }
 	template<typename Predicate> bool ContainsByPredicate(Predicate Pred) const { return Pred(TPStubRef<const InElementType>()); }
 	int32 Find(const InElementType& Item) const;
 	bool Find(const InElementType& Item, int32& Index) const;
@@ -301,7 +301,7 @@ public:
 	template<typename Predicate> int32 FindLastByPredicate(Predicate Pred) const { (void)Pred(TPStubRef<const InElementType>()); return INDEX_NONE; }
 	template<typename Predicate> TArray FilterByPredicate(Predicate Pred) const { (void)Pred(TPStubRef<const InElementType>()); return TArray(); }
 
-	void Sort() { (void)(TPStubRef<const InElementType>() < TPStubRef<const InElementType>()); }
+	void Sort() { Sort(FTPLessDefault()); }
 	template<typename PredicateType> void Sort(const PredicateType& Pred) { TTPDerefPred<InElementType, PredicateType> D{Pred}; (void)D(TPStubRef<InElementType>(), TPStubRef<InElementType>()); }
 	void StableSort() { Sort(); }
 	template<typename PredicateType> void StableSort(const PredicateType& Pred) { Sort(Pred); }
@@ -387,6 +387,8 @@ FORCEINLINE uint32 HashCombine(uint32 A, uint32 C) { return A ^ C; }
 FORCEINLINE uint32 PointerHash(const void* Key, uint32 C = 0) { return 0; }
 
 // ---------- TSet / TMap ----------
+template<typename T> struct TTPKeyArg { typedef const T& Type; };
+template<typename T> struct TTPKeyArg<T*> { typedef const T* Type; };
 template<typename InElementType, typename KeyFuncs = void, typename Allocator = FDefaultSetAllocator>
 class TSet
 {
@@ -399,10 +401,10 @@ public:
 	template<typename... A> FSetElementId Emplace(A&&... Args);
 	void Append(const TArray<InElementType>& InElements);
 	void Append(const TSet& Other);
-	int32 Remove(const InElementType& Key);
-	bool Contains(const InElementType& Key) const { (void)GetTypeHash(Key); return false; }
-	const InElementType* Find(const InElementType& Key) const;
-	InElementType* Find(const InElementType& Key);
+	int32 Remove(typename TTPKeyArg<InElementType>::Type Key);
+	bool Contains(typename TTPKeyArg<InElementType>::Type Key) const { (void)GetTypeHash(Key); return false; }
+	const InElementType* Find(typename TTPKeyArg<InElementType>::Type Key) const;
+	InElementType* Find(typename TTPKeyArg<InElementType>::Type Key);
 	int32 Num() const;
 	void Empty(int32 ExpectedNumElements = 0);
 	void Reset();
@@ -437,16 +439,16 @@ public:
 	ValueType& FindOrAdd(const KeyType& Key) { (void)GetTypeHash(Key); return TPStubRef<ValueType>(); }
 	ValueType& FindOrAdd(KeyType&& Key) { (void)GetTypeHash(Key); return TPStubRef<ValueType>(); }
 	ValueType& FindOrAdd(const KeyType& Key, const ValueType& Value);
-	ValueType* Find(const KeyType& Key) { (void)GetTypeHash(Key); return nullptr; }
-	const ValueType* Find(const KeyType& Key) const { (void)GetTypeHash(Key); return nullptr; }
-	ValueType FindRef(const KeyType& Key) const { (void)GetTypeHash(Key); return TPStubRef<ValueType>(); }
-	ValueType& FindChecked(const KeyType& Key);
-	const ValueType& FindChecked(const KeyType& Key) const;
+	ValueType* Find(typename TTPKeyArg<KeyType>::Type Key) { (void)GetTypeHash(Key); return nullptr; }
+	const ValueType* Find(typename TTPKeyArg<KeyType>::Type Key) const { (void)GetTypeHash(Key); return nullptr; }
+	ValueType FindRef(typename TTPKeyArg<KeyType>::Type Key) const { (void)GetTypeHash(Key); return TPStubRef<ValueType>(); }
+	ValueType& FindChecked(typename TTPKeyArg<KeyType>::Type Key);
+	const ValueType& FindChecked(typename TTPKeyArg<KeyType>::Type Key) const;
 	const KeyType* FindKey(const ValueType& Value) const;
 	ValueType FindAndRemoveChecked(const KeyType& Key);
 	bool RemoveAndCopyValue(const KeyType& Key, ValueType& OutRemovedValue);
-	bool Contains(const KeyType& Key) const { (void)GetTypeHash(Key); return false; }
-	int32 Remove(const KeyType& Key);
+	bool Contains(typename TTPKeyArg<KeyType>::Type Key) const { (void)GetTypeHash(Key); return false; }
+	int32 Remove(typename TTPKeyArg<KeyType>::Type Key);
 	int32 Num() const;
 	void Empty(int32 ExpectedNumElements = 0);
 	void Reset();
@@ -792,24 +794,28 @@ struct FPlatformAtomics { static int32 InterlockedIncrement(volatile int32* Valu
 template<typename T> class TAtomic { public: TAtomic(); TAtomic(T V); T Load() const; void Store(T V); operator T() const; T operator++(); T operator++(int); T operator--(); T operator+=(T); T operator=(T); T Exchange(T); };
 class FCriticalSection { public: void Lock(); void Unlock(); };
 class FScopeLock { public: explicit FScopeLock(FCriticalSection* Sync); ~FScopeLock(); };
-struct FDateTime { static FDateTime Now(); static FDateTime UtcNow(); FString ToString() const; FString ToString(const TCHAR* Format) const; int32 GetYear() const; int32 GetHour() const; int32 GetMinute() const; int64 GetTicks() const; };
-struct FTimespan { double GetTotalSeconds() const; };
+struct FTimespan;
+struct FDateTime { FDateTime(); FDateTime(int32 Year, int32 Month, int32 Day, int32 Hour = 0, int32 Minute = 0, int32 Second = 0, int32 Millisecond = 0); int32 GetDay() const; int32 GetMonth() const; int32 GetSecond() const; FTimespan operator-(const FDateTime& Other) const; bool operator<(const FDateTime& O) const; bool operator>(const FDateTime& O) const; bool operator==(const FDateTime& O) const; static FDateTime Now(); static FDateTime UtcNow(); FString ToString() const; FString ToString(const TCHAR* Format) const; int32 GetYear() const; int32 GetHour() const; int32 GetMinute() const; int64 GetTicks() const; };
+struct FTimespan { FTimespan(); double GetTotalSeconds() const; double GetTotalMinutes() const; double GetTotalHours() const; double GetTotalMilliseconds() const; int32 GetSeconds() const; int32 GetMinutes() const; int32 GetHours() const; static FTimespan FromSeconds(double Seconds); };
 struct FGuid { FGuid(); FGuid(uint32 A, uint32 B, uint32 C, uint32 D); static FGuid NewGuid(); bool IsValid() const; FString ToString() const; uint32 A, B, C, D; bool operator==(const FGuid&) const; bool operator!=(const FGuid&) const; };
 uint32 GetTypeHash(const FGuid& G);
 struct FPaths
 {
 	static FString ProjectDir(); static FString ProjectContentDir(); static FString ProjectSavedDir(); static FString ProjectConfigDir(); static FString EngineDir(); static FString ProjectLogDir();
-	static FString Combine(const FString& A, const FString& B); static FString Combine(const FString& A, const FString& B, const FString& C);
+	template<typename... PathTypes> static FString Combine(PathTypes&&... InPaths);
 	static bool FileExists(const FString& InPath); static bool DirectoryExists(const FString& InPath);
 	static FString GetBaseFilename(const FString& InPath, bool bRemovePath = true); static FString GetExtension(const FString& InPath, bool bIncludeDot = false); static FString GetPath(const FString& InPath); static FString GetCleanFilename(const FString& InPath);
 	static void NormalizeFilename(FString& InPath); static FString ConvertRelativePathToFull(const FString& InPath);
 };
 struct FFileHelper
 {
-	static bool LoadFileToString(FString& Result, const TCHAR* Filename, uint32 VerifyFlags = 0, uint32 ReadFlags = 0);
+	enum class EHashOptions { None = 0, EnableVerify = 1, ErrorMissingHash = 2 };
+	enum class EEncodingOptions { AutoDetect, ForceAnsi, ForceUnicode, ForceUTF8, ForceUTF8WithoutBOM };
+	static bool LoadFileToString(FString& Result, const TCHAR* Filename, EHashOptions VerifyFlags = EHashOptions::None, uint32 ReadFlags = 0);
 	static bool LoadFileToArray(TArray<uint8>& Result, const TCHAR* Filename, uint32 Flags = 0);
 	static bool LoadFileToStringArray(TArray<FString>& Result, const TCHAR* Filename);
-	static bool SaveStringToFile(const FString& String, const TCHAR* Filename, int32 EncodingOptions = 0, class IFileManager* FileManager = nullptr, uint32 WriteFlags = 0);
+	static bool SaveStringToFile(const FString& String, const TCHAR* Filename, EEncodingOptions EncodingOptions = EEncodingOptions::AutoDetect, class IFileManager* FileManager = nullptr, uint32 WriteFlags = 0);
+	static bool SaveStringArrayToFile(const TArray<FString>& Lines, const TCHAR* Filename, EEncodingOptions EncodingOptions = EEncodingOptions::AutoDetect, class IFileManager* FileManager = nullptr, uint32 WriteFlags = 0);
 	static bool SaveArrayToFile(const TArray<uint8>& Array, const TCHAR* Filename, class IFileManager* FileManager = nullptr, uint32 WriteFlags = 0);
 };
 class FArchive
@@ -828,6 +834,22 @@ public:
 	template<typename T, typename A> friend FArchive& operator<<(FArchive& Ar, TArray<T, A>& V) { return Ar; }
 	template<typename K, typename V2> friend FArchive& operator<<(FArchive& Ar, TMap<K, V2>& V) { return Ar; }
 };
+class IFileManager
+{
+public:
+	static IFileManager& Get();
+	virtual bool Delete(const TCHAR* Filename, bool RequireExists = 0, bool EvenReadOnly = 0, bool Quiet = 0) = 0;
+	virtual bool MakeDirectory(const TCHAR* Path, bool Tree = 0) = 0;
+	virtual bool DirectoryExists(const TCHAR* InDirectory) = 0;
+	virtual bool Move(const TCHAR* Dest, const TCHAR* Src, bool Replace = 1, bool EvenIfReadOnly = 0, bool Attributes = 0, bool bDoNotRetryOrError = 0) = 0;
+	virtual int64 FileSize(const TCHAR* Filename) = 0;
+	bool FileExists(const TCHAR* Filename);
+	virtual void FindFiles(TArray<FString>& FileNames, const TCHAR* Filename, bool Files, bool Directories) = 0;
+	virtual FArchive* CreateFileReader(const TCHAR* Filename, uint32 ReadFlags = 0) = 0;
+	virtual FArchive* CreateFileWriter(const TCHAR* Filename, uint32 WriteFlags = 0) = 0;
+};
+class IPlatformFile { public: virtual ~IPlatformFile(); virtual bool FileExists(const TCHAR* Filename) = 0; virtual bool DeleteFile(const TCHAR* Filename) = 0; virtual bool DirectoryExists(const TCHAR* Directory) = 0; virtual bool CreateDirectoryTree(const TCHAR* Directory); virtual bool CreateDirectory(const TCHAR* Directory) = 0; virtual int64 FileSize(const TCHAR* Filename) = 0; };
+class FPlatformFileManager { public: static FPlatformFileManager& Get(); IPlatformFile& GetPlatformFile(); };
 class FMemoryWriter : public FArchive { public: FMemoryWriter(TArray<uint8>& InBytes, bool bIsPersistent = false, bool bSetOffset = false, const FName InArchiveName = NAME_None); };
 class FMemoryReader : public FArchive { public: explicit FMemoryReader(const TArray<uint8>& InBytes, bool bIsPersistent = false); };
 class FOutputDevice { public: virtual ~FOutputDevice(); virtual void Serialize(const TCHAR* V, ELogVerbosity::Type Verbosity, const FName& Category) = 0; template<typename... T> void Logf(const TCHAR* Fmt, T... Args); };

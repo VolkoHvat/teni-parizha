@@ -77,7 +77,7 @@ namespace EDrawDebugTrace { enum Type { None, ForOneFrame, ForDuration, Persiste
 enum EMovementMode { MOVE_None, MOVE_Walking, MOVE_NavWalking, MOVE_Falling, MOVE_Swimming, MOVE_Flying, MOVE_Custom, MOVE_MAX };
 enum EPhysicalSurface { SurfaceType_Default, SurfaceType1, SurfaceType2, SurfaceType3, SurfaceType4, SurfaceType5, SurfaceType_Max };
 enum ERadialImpulseFalloff { RIF_Constant, RIF_Linear, RIF_MAX };
-enum class ECanBeCharacterBase : uint8 { ECB_No, ECB_Yes, ECB_Owner };
+enum ECanBeCharacterBase { ECB_No, ECB_Yes, ECB_Owner, ECB_MAX };
 enum class ELightUnits : uint8 { Unitless, Candelas, Lumens };
 enum EBlendMode { BLEND_Opaque, BLEND_Masked, BLEND_Translucent, BLEND_Additive, BLEND_Modulate, BLEND_AlphaComposite, BLEND_AlphaHoldout, BLEND_MAX };
 enum EMaterialShadingModel { MSM_Unlit, MSM_DefaultLit, MSM_Subsurface, MSM_PreintegratedSkin, MSM_ClearCoat, MSM_SubsurfaceProfile, MSM_TwoSidedFoliage, MSM_Hair, MSM_Cloth, MSM_Eye, MSM_MAX };
