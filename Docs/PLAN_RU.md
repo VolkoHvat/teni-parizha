@@ -25,7 +25,7 @@
    - `check.sh` (clang/g++ `-fsyntax-only`, режим unity-сборки);
    - линтер (UObject-указатель без UPROPERTY, затенение членов, UE5-имена, порядок include);
    - README.
-2. [ ] **Порт каркаса на 4.27.**
+2. [~] **Порт каркаса на 4.27.**
    - `.uproject`: 4.27, без Enhanced Input и Modeling;
    - `Target.cs`: V2; `Build.cs`: + AnimGraphRuntime, AnimationCore, MeshDescription, StaticMeshDescription;
    - `DefaultEngine.ini`: DX11, без Lumen/Nanite/RT/VSM/DF;
