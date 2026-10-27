@@ -43,7 +43,7 @@ HEAVY = [
     (r'bRealTimeCapture\s*=\s*true', 'пересъёмка небесного света каждый кадр запрещена (SkyLight — раз в игровой час)'),
     (r'CastRaytracedShadow\s*=\s*(?:1|true)|bUseRayTracedDistanceFieldShadows\s*=\s*(?:1|true)|SetCastRaytracedShadow\s*\(\s*true', 'трассировка лучей / DF-тени запрещены'),
     (r'bGenerateMeshDistanceField\s*=\s*(?:1|true)', 'Distance Field запрещены'),
-    (r'\bLumen\w*|\bNanite\w*', 'Lumen/Nanite — это UE5 и запрещены'),
+    (r'\bLumen(?!s\b)\w*|\bNanite\w*', 'Lumen/Nanite — это UE5 и запрещены'),
 ]
 INI_RULES = [
     (r'^\s*r\.RayTracing\s*=\s*(?:1|True)', 'трассировка лучей запрещена'),

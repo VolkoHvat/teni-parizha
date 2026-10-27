@@ -6,9 +6,10 @@ public class TeniParizha : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 		PublicDependencyModuleNames.AddRange(new string[] {
-			"Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput",
+			"Core", "CoreUObject", "Engine", "InputCore",
 			"ProceduralMeshComponent", "AIModule", "NavigationSystem", "GameplayTasks",
-			"UMG", "Slate", "SlateCore", "RenderCore"
+			"UMG", "Slate", "SlateCore", "RenderCore", "RHI",
+			"AnimGraphRuntime", "AnimationCore", "MeshDescription", "StaticMeshDescription"
 		});
 	}
 }

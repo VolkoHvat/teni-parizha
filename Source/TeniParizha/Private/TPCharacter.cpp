@@ -1,4 +1,4 @@
-#include "TPCharacter.h"
+﻿#include "TPCharacter.h"
 #include "TeniParizha.h"
 #include "TPTraversalComponent.h"
 #include "TPCombatComponent.h"
@@ -7,12 +7,13 @@
 #include "GameFramework/SpringArmComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Components/CapsuleComponent.h"
-#include "EnhancedInputComponent.h"
-#include "EnhancedInputSubsystems.h"
-#include "InputAction.h"
-#include "InputMappingContext.h"
-#include "InputModifiers.h"
-#include "EnhancedPlayerInput.h"
+#include "Components/InputComponent.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Animation/AnimInstance.h"
+#include "Engine/SkeletalMesh.h"
+#include "GameFramework/PlayerController.h"
+#include "GameFramework/InputSettings.h"
+#include "Engine/World.h"
 #include "EngineUtils.h"
 
 ATPCharacter::ATPCharacter()
@@ -55,21 +56,18 @@ ATPCharacter::ATPCharacter()
 	GetMesh()->SetRelativeLocation(FVector(0.f, 0.f, -92.f));
 	GetMesh()->SetRelativeRotation(FRotator(0.f, -90.f, 0.f));
 
-	// Шаблон Third Person: в UE 5.4+ — SKM_Manny_Simple + ABP_Unarmed, раньше — SKM_Manny + ABP_Manny
+	// Пакет Third Person UE4 (Add New → Add Feature or Content Pack → Third Person), запасной — Animation Starter Pack
 	MeshCandidates = {
-		TEXT("/Game/Characters/Mannequins/Meshes/SKM_Manny_Simple.SKM_Manny_Simple"),
-		TEXT("/Game/Characters/Mannequins/Meshes/SKM_Manny.SKM_Manny"),
-		TEXT("/Game/Characters/Mannequins/Meshes/SKM_Quinn_Simple.SKM_Quinn_Simple") };
+		TEXT("/Game/Mannequin/Character/Mesh/SK_Mannequin.SK_Mannequin"),
+		TEXT("/Game/AnimStarterPack/UE4_Mannequin/Mesh/SK_Mannequin.SK_Mannequin") };
 	AnimClassCandidates = {
-		TEXT("/Game/Characters/Mannequins/Anims/Unarmed/ABP_Unarmed.ABP_Unarmed_C"),
-		TEXT("/Game/Characters/Mannequins/Animations/ABP_Manny.ABP_Manny_C"),
-		TEXT("/Game/Characters/Mannequins/Animations/ABP_Quinn.ABP_Quinn_C") };
+		TEXT("/Game/Mannequin/Animations/ThirdPerson_AnimBP.ThirdPerson_AnimBP_C") };
 }
 
 void ATPCharacter::ApplyAppearance()
 {
 	USkeletalMeshComponent* M = GetMesh();
-	if (!M->GetSkeletalMeshAsset())
+	if (!M->SkeletalMesh)
 	{
 		for (const FString& P : MeshCandidates)
 			if (USkeletalMesh* SM = LoadObject<USkeletalMesh>(nullptr, *P, nullptr, LOAD_NoWarn | LOAD_Quiet)) { M->SetSkeletalMesh(SM); break; }
@@ -79,8 +77,8 @@ void ATPCharacter::ApplyAppearance()
 		for (const FString& P : AnimClassCandidates)
 			if (UClass* C = LoadClass<UAnimInstance>(nullptr, *P, nullptr, LOAD_NoWarn | LOAD_Quiet)) { M->SetAnimInstanceClass(C); break; }
 	}
-	if (!M->GetSkeletalMeshAsset())
-		UE_LOG(LogTeni, Warning, TEXT("Нет меша персонажа: добавьте Third Person через Content Browser → Add → Add Feature or Content Pack"));
+	if (!M->SkeletalMesh)
+		UE_LOG(LogTeni, Warning, TEXT("Нет меша персонажа: добавьте Third Person через Content Browser → Add → Add Feature or Content Pack → Third Person"));
 }
 
 void ATPCharacter::BeginPlay()
@@ -91,105 +89,80 @@ void ATPCharacter::BeginPlay()
 	for (TActorIterator<ATPCityGenerator> It(GetWorld()); It; ++It)
 	{
 		const FVector Start = It->GetPlayerStart() + FVector(0.f, 0.f, 100.f);
-		Traversal->ResetTo(Start, 0.f);
+		if (Traversal) Traversal->ResetTo(Start, 0.f);
 		break;
 	}
 }
 
-void ATPCharacter::PawnClientRestart()
-{
-	Super::PawnClientRestart();
-	if (APlayerController* PC = Cast<APlayerController>(GetController()))
-		if (ULocalPlayer* LP = PC->GetLocalPlayer())
-			if (UEnhancedInputLocalPlayerSubsystem* Sub = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(LP))
-			{
-				if (!Mapping) BuildInput();
-				Sub->ClearAllMappings();
-				Sub->AddMappingContext(Mapping, 0);
-			}
-}
-
-/* Действия и раскладка создаются в коде — не нужны ассеты .uasset */
-void ATPCharacter::BuildInput()
-{
-	Mapping = NewObject<UInputMappingContext>(this, TEXT("TP_Mapping"));
-	auto MakeAction = [this](FName Name, EInputActionValueType Type) {
-		UInputAction* A = NewObject<UInputAction>(this, Name);
-		A->ValueType = Type;
-		Actions.Add(Name, A);
-		return A;
-	};
-	auto Neg = [this]() { return NewObject<UInputModifierNegate>(this); };
-	auto Swz = [this]() { UInputModifierSwizzleAxis* S = NewObject<UInputModifierSwizzleAxis>(this); S->Order = EInputAxisSwizzle::YXZ; return S; };
-	auto DeadZone = [this]() { UInputModifierDeadZone* D = NewObject<UInputModifierDeadZone>(this); D->LowerThreshold = 0.2f; return D; };
-
-	UInputAction* Move = MakeAction("Move", EInputActionValueType::Axis2D);
-	Mapping->MapKey(Move, EKeys::D);
-	Mapping->MapKey(Move, EKeys::A).Modifiers.Add(Neg());
-	Mapping->MapKey(Move, EKeys::W).Modifiers.Add(Swz());
-	{ FEnhancedActionKeyMapping& K = Mapping->MapKey(Move, EKeys::S); K.Modifiers.Add(Swz()); K.Modifiers.Add(Neg()); }
-	Mapping->MapKey(Move, EKeys::Gamepad_Left2D).Modifiers.Add(DeadZone());
-
-	UInputAction* Look = MakeAction("Look", EInputActionValueType::Axis2D);
-	Mapping->MapKey(Look, EKeys::Mouse2D);
-	{ FEnhancedActionKeyMapping& K = Mapping->MapKey(Look, EKeys::Gamepad_Right2D); K.Modifiers.Add(DeadZone()); }
-
-	auto MapBool = [&](FName Name, std::initializer_list<FKey> Keys) {
-		UInputAction* A = MakeAction(Name, EInputActionValueType::Boolean);
-		for (const FKey& K : Keys) Mapping->MapKey(A, K);
-		return A;
-	};
-	MapBool("Sprint", {EKeys::LeftShift, EKeys::Gamepad_RightTrigger, EKeys::RightMouseButton});
-	MapBool("Jump", {EKeys::SpaceBar, EKeys::Gamepad_FaceButton_Bottom});
-	MapBool("Crouch", {EKeys::LeftControl, EKeys::C, EKeys::Gamepad_FaceButton_Right});
-	MapBool("Drop", {EKeys::Q, EKeys::Gamepad_LeftShoulder});
-	MapBool("Turn", {EKeys::R, EKeys::Gamepad_RightThumbstick});
-	MapBool("Attack", {EKeys::LeftMouseButton, EKeys::F, EKeys::Gamepad_FaceButton_Left});
-	MapBool("Counter", {EKeys::E, EKeys::Gamepad_FaceButton_Top});
-	MapBool("Dodge", {EKeys::LeftAlt, EKeys::Gamepad_RightShoulder});
-	MapBool("Interact", {EKeys::G, EKeys::Gamepad_DPad_Up});
-	MapBool("Album", {EKeys::Tab, EKeys::Gamepad_Special_Left});
-	MapBool("Pause", {EKeys::Escape, EKeys::Gamepad_Special_Right});
-	MapBool("Help", {EKeys::F1});
-}
-
+/* Классический ввод UE 4.27: оси и действия описаны в Config/DefaultInput.ini — ассеты не нужны */
 void ATPCharacter::SetupPlayerInputComponent(UInputComponent* PIC)
 {
 	Super::SetupPlayerInputComponent(PIC);
-	if (!Mapping) BuildInput();
-	UEnhancedInputComponent* EI = Cast<UEnhancedInputComponent>(PIC);
-	if (!EI) { UE_LOG(LogTeni, Error, TEXT("Нужен EnhancedInputComponent (Config/DefaultEngine.ini)")); return; }
-	EI->BindAction(Actions["Move"], ETriggerEvent::Triggered, this, &ATPCharacter::OnMove);
-	EI->BindAction(Actions["Move"], ETriggerEvent::Completed, this, &ATPCharacter::OnMoveDone);
-	EI->BindAction(Actions["Look"], ETriggerEvent::Triggered, this, &ATPCharacter::OnLook);
-	EI->BindAction(Actions["Jump"], ETriggerEvent::Started, this, &ATPCharacter::OnJump);
-	EI->BindAction(Actions["Drop"], ETriggerEvent::Started, this, &ATPCharacter::OnDrop);
-	EI->BindAction(Actions["Turn"], ETriggerEvent::Started, this, &ATPCharacter::OnTurn);
-	EI->BindAction(Actions["Attack"], ETriggerEvent::Started, this, &ATPCharacter::OnAttack);
-	EI->BindAction(Actions["Counter"], ETriggerEvent::Started, this, &ATPCharacter::OnCounter);
-	EI->BindAction(Actions["Dodge"], ETriggerEvent::Started, this, &ATPCharacter::OnDodge);
-	EI->BindAction(Actions["Interact"], ETriggerEvent::Started, this, &ATPCharacter::OnInteract);
-	EI->BindAction(Actions["Album"], ETriggerEvent::Started, this, &ATPCharacter::OnAlbum);
-	EI->BindAction(Actions["Pause"], ETriggerEvent::Started, this, &ATPCharacter::OnPause);
-	EI->BindAction(Actions["Help"], ETriggerEvent::Started, this, &ATPCharacter::OnHelp);
+	check(PIC);
+	PIC->BindAxis(TEXT("MoveForward"), this, &ATPCharacter::OnMoveForward);
+	PIC->BindAxis(TEXT("MoveRight"), this, &ATPCharacter::OnMoveRight);
+	PIC->BindAxis(TEXT("Turn"), this, &ATPCharacter::OnTurn);
+	PIC->BindAxis(TEXT("LookUp"), this, &ATPCharacter::OnLookUp);
+	PIC->BindAxis(TEXT("TurnRate"), this, &ATPCharacter::OnTurnRate);
+	PIC->BindAxis(TEXT("LookUpRate"), this, &ATPCharacter::OnLookUpRate);
+
+	PIC->BindAction(TEXT("Jump"), IE_Pressed, this, &ATPCharacter::OnJump);
+	PIC->BindAction(TEXT("Drop"), IE_Pressed, this, &ATPCharacter::OnDrop);
+	PIC->BindAction(TEXT("TurnBack"), IE_Pressed, this, &ATPCharacter::OnTurnBack);
+	PIC->BindAction(TEXT("Attack"), IE_Pressed, this, &ATPCharacter::OnAttack);
+	PIC->BindAction(TEXT("Counter"), IE_Pressed, this, &ATPCharacter::OnCounter);
+	PIC->BindAction(TEXT("Dodge"), IE_Pressed, this, &ATPCharacter::OnDodge);
+	PIC->BindAction(TEXT("Interact"), IE_Pressed, this, &ATPCharacter::OnInteract);
+	PIC->BindAction(TEXT("Album"), IE_Pressed, this, &ATPCharacter::OnAlbum);
+	// на паузе действия не срабатывают: меню паузы, альбом и справку закрывает сам интерфейс (опрос клавиш в ATPHUD)
+	PIC->BindAction(TEXT("Pause"), IE_Pressed, this, &ATPCharacter::OnPause);
+	PIC->BindAction(TEXT("Help"), IE_Pressed, this, &ATPCharacter::OnHelp);
+	CacheHeldKeys();
 }
 
-void ATPCharacter::OnMove(const FInputActionValue& V) { MoveAxis = V.Get<FVector2D>(); }
-void ATPCharacter::OnMoveDone(const FInputActionValue& V) { MoveAxis = FVector2D::ZeroVector; }
-void ATPCharacter::OnLook(const FInputActionValue& V)
+void ATPCharacter::CacheHeldKeys()
 {
-	const FVector2D L = V.Get<FVector2D>();
-	AddControllerYawInput(L.X);
-	AddControllerPitchInput(-L.Y);
+	SprintKeys.Reset();
+	CrouchKeys.Reset();
+	const UInputSettings* IS = UInputSettings::GetInputSettings();
+	if (!IS) return;
+	TArray<FInputActionKeyMapping> Maps;
+	IS->GetActionMappingByName(TEXT("Sprint"), Maps);
+	for (const FInputActionKeyMapping& KM : Maps) SprintKeys.AddUnique(KM.Key);
+	Maps.Reset();
+	IS->GetActionMappingByName(TEXT("Crouch"), Maps);
+	for (const FInputActionKeyMapping& KM : Maps) CrouchKeys.AddUnique(KM.Key);
+	if (SprintKeys.Num() == 0 || CrouchKeys.Num() == 0)
+		UE_LOG(LogTeni, Warning, TEXT("В Config/DefaultInput.ini нет действий Sprint/Crouch — бег и присед недоступны"));
 }
-void ATPCharacter::OnJump(const FInputActionValue& V) { if (!bInputLocked) Pending.bJump = true; }
-void ATPCharacter::OnDrop(const FInputActionValue& V) { if (!bInputLocked) Pending.bDrop = true; }
-void ATPCharacter::OnTurn(const FInputActionValue& V) { if (!bInputLocked) Pending.bTurn = true; }
-void ATPCharacter::OnAttack(const FInputActionValue& V) { if (!bInputLocked) Combat->RequestAction(ETPCombatAction::Attack, GetActorForwardVector()); }
-void ATPCharacter::OnCounter(const FInputActionValue& V) { if (!bInputLocked) Combat->RequestAction(ETPCombatAction::Counter, GetActorForwardVector()); }
-void ATPCharacter::OnDodge(const FInputActionValue& V)
+
+bool ATPCharacter::IsActionHeld(const TArray<FKey>& Keys) const
 {
-	if (bInputLocked) return;
+	const APlayerController* PC = Cast<APlayerController>(GetController());
+	if (!PC) return false;
+	for (const FKey& K : Keys)
+		if (PC->IsInputKeyDown(K)) return true;
+	return false;
+}
+
+void ATPCharacter::OnTurn(float Value) { if (Value != 0.f) AddControllerYawInput(Value); }
+void ATPCharacter::OnLookUp(float Value) { if (Value != 0.f) AddControllerPitchInput(Value); }
+void ATPCharacter::OnTurnRate(float Value)
+{
+	if (Value != 0.f && GetWorld()) AddControllerYawInput(Value * GamepadTurnRate * GetWorld()->GetDeltaSeconds());
+}
+void ATPCharacter::OnLookUpRate(float Value)
+{
+	if (Value != 0.f && GetWorld()) AddControllerPitchInput(Value * GamepadLookUpRate * GetWorld()->GetDeltaSeconds());
+}
+void ATPCharacter::OnJump() { if (!bInputLocked) Pending.bJump = true; }
+void ATPCharacter::OnDrop() { if (!bInputLocked) Pending.bDrop = true; }
+void ATPCharacter::OnTurnBack() { if (!bInputLocked) Pending.bTurn = true; }
+void ATPCharacter::OnAttack() { if (!bInputLocked && Combat) Combat->RequestAction(ETPCombatAction::Attack, GetActorForwardVector()); }
+void ATPCharacter::OnCounter() { if (!bInputLocked && Combat) Combat->RequestAction(ETPCombatAction::Counter, GetActorForwardVector()); }
+void ATPCharacter::OnDodge()
+{
+	if (bInputLocked || !Combat) return;
 	const FVector D = CameraRelative(MoveAxis);
 	Combat->RequestAction(ETPCombatAction::Dodge, D.IsNearlyZero() ? -GetActorForwardVector() : D);
 }
@@ -211,17 +184,11 @@ void ATPCharacter::Tick(float Dt)
 	if (bPC)
 	{
 		In.Move = CameraRelative(MoveAxis);
-		auto Held = [this](FName N) {
-			const APlayerController* PC = Cast<APlayerController>(GetController());
-			if (!PC || !PC->GetLocalPlayer()) return false;
-			const UEnhancedInputLocalPlayerSubsystem* S = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PC->GetLocalPlayer());
-			return S && S->GetPlayerInput() && S->GetPlayerInput()->GetActionValue(Actions[N]).Get<bool>();
-		};
-		In.bSprint = Held("Sprint");
-		In.bCrouch = Held("Crouch");
+		In.bSprint = IsActionHeld(SprintKeys);
+		In.bCrouch = IsActionHeld(CrouchKeys);
 	}
 	else In = FTPMoveInput();
-	Traversal->SetInput(In);
+	if (Traversal) Traversal->SetInput(In);
 	// камера чуть дальше на свободном бегу
 	CameraBoom->TargetArmLength = FMath::FInterpTo(CameraBoom->TargetArmLength, In.bSprint ? 430.f : 380.f, Dt, 3.f);
 }
