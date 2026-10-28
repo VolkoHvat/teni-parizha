@@ -7,6 +7,7 @@ class USkeletalMesh; class UPhysicsAsset; class USkinnedMeshComponent;
 namespace EBoneSpaces { enum Type { WorldSpace, ComponentSpace }; }
 enum EPhysBodyOp { PBO_None, PBO_Term, PBO_MAX };
 struct FAnimUpdateRateParameters { bool bInterpolateSkippedFrames; bool bShouldUseLodMap; bool bShouldUseMinLod; TMap<int32, int32> LODToFrameSkipMap; int32 BaseNonRenderedUpdateRate; TArray<float> BaseVisibleDistanceFactorThesholds; int32 MaxEvalRateForInterpolation; };
+DECLARE_DELEGATE_OneParam(FOnAnimUpdateRateParamsCreated, FAnimUpdateRateParameters*);
 class USkinnedMeshComponent : public UMeshComponent
 {
 public:
@@ -20,6 +21,7 @@ public:
 	uint8 bConsiderAllBodiesForBounds : 1; uint8 bSyncAttachParentLOD : 1; uint8 bNoSkeletonUpdate : 1; uint8 bIgnoreMasterPoseComponentLOD : 1;
 	float CapsuleIndirectShadowMinVisibility;
 	FAnimUpdateRateParameters* AnimUpdateRateParams;
+	FOnAnimUpdateRateParamsCreated OnAnimUpdateRateParamsCreated;
 	virtual void SetSkeletalMesh(USkeletalMesh* NewMesh, bool bReinitPose = true);
 	void SetMasterPoseComponent(USkinnedMeshComponent* NewMasterBoneComponent, bool bForceUpdate = false);
 	const TArray<TWeakObjectPtr<USkinnedMeshComponent>>& GetSlavePoseComponents() const;
