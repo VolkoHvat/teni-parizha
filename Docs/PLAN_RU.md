@@ -33,7 +33,7 @@
    - `DefaultInput.ini` и `TPCharacter` на BindAxis/BindAction;
    - `TPGameMode`;
    - `TPEnvironment` облегчить: без объёмных облаков и тумана, SkyLight пересъёмка раз в игровой час, только 6–8 ближайших фонарей включены и без теней.
-3. [ ] **Порт паркура и боя:** `TPTraversal*`, `TPCombat*`, `TPGuard*` через стенд до чистоты.
+3. [~] **Порт паркура и боя:** `TPTraversal*`, `TPCombat*`, `TPGuard*` через стенд до чистоты.
 4. [ ] **Порт жителей, сюжета и интерфейса:** `TPHUD`, `TPCitizen*`, `TPIdentity*`, `TPStory*`, `TPSave*` через стенд до чистоты.
 5. [ ] **Анимация, часть 1.** `TPAnimPoseMath.h`: двухзвенный IK с pole-вектором, позы целями конечностей, переходы (порт `legacy/lutece/anim/lu_humanoid.c`).
    - Тест в `Tools/AnimTest`: нет NaN, длины костей сохраняются, колени и локти сгибаются в нужную сторону, нет скачков между кадрами.
