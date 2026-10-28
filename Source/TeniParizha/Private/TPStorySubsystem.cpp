@@ -1,4 +1,4 @@
-// Тени Парижа — сюжет, Лига крыш, альбом и сохранение.
+﻿// Тени Парижа — сюжет, Лига крыш, альбом и сохранение.
 #include "TPStorySubsystem.h"
 #include "TeniParizha.h"
 #include "TPCharacter.h"
@@ -104,9 +104,18 @@ namespace TPStoryData
 
 /* ======================= жизненный цикл ======================= */
 
+bool UTPStorySubsystem::ShouldCreateSubsystem(UObject* Outer) const
+{
+	if (!Super::ShouldCreateSubsystem(Outer)) return false;
+	// только игра и PIE (в UE 4.27 нет DoesSupportWorldType)
+	const UWorld* W = Cast<UWorld>(Outer);
+	return W && (W->WorldType == EWorldType::Game || W->WorldType == EWorldType::PIE);
+}
+
 void UTPStorySubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
+	bInitialized = true;
 	Medals.Init(0, NumRaces);
 	BestTimes.Init(0.f, NumRaces);
 	Album.Init(0, TPCitizens::Num);
@@ -116,14 +125,23 @@ void UTPStorySubsystem::Initialize(FSubsystemCollectionBase& Collection)
 void UTPStorySubsystem::Deinitialize()
 {
 	if (bStarted && bDirty) SaveProgress();
+	if (UWorld* W = GetWorld()) W->GetTimerManager().ClearTimer(SpawnTimer);
+	bInitialized = false;
 	if (ATPCharacter* H = Hero.Get()) H->OnInteractPressed.RemoveDynamic(this, &UTPStorySubsystem::HandleInteract);
 	Hero = nullptr;
 	Super::Deinitialize();
 }
 
-bool UTPStorySubsystem::DoesSupportWorldType(const EWorldType::Type WorldType) const
+ETickableTickType UTPStorySubsystem::GetTickableTickType() const
 {
-	return WorldType == EWorldType::Game || WorldType == EWorldType::PIE;
+	// объект-образец класса (CDO) не должен тикать
+	return HasAnyFlags(RF_ClassDefaultObject) ? ETickableTickType::Never : ETickableTickType::Conditional;
+}
+
+bool UTPStorySubsystem::IsTickable() const
+{
+	const UWorld* W = GetWorld();
+	return bInitialized && W && W->IsGameWorld() && !IsPendingKill();
 }
 
 TStatId UTPStorySubsystem::GetStatId() const
@@ -131,9 +149,8 @@ TStatId UTPStorySubsystem::GetStatId() const
 	RETURN_QUICK_DECLARE_CYCLE_STAT(UTPStorySubsystem, STATGROUP_Tickables);
 }
 
-void UTPStorySubsystem::OnWorldBeginPlay(UWorld& InWorld)
+void UTPStorySubsystem::StartWorld(UWorld& InWorld)
 {
-	Super::OnWorldBeginPlay(InWorld);
 	bStarted = true;
 	LoadProgress();
 	// генератор города заполняет точки прогулок в своём BeginPlay — жителей создаём чуть позже
@@ -142,10 +159,14 @@ void UTPStorySubsystem::OnWorldBeginPlay(UWorld& InWorld)
 
 void UTPStorySubsystem::Tick(float DeltaTime)
 {
-	Super::Tick(DeltaTime);
-	if (!bStarted) return;
 	UWorld* W = GetWorld();
 	if (!W) return;
+	// замена OnWorldBeginPlay: стартуем в первом тике после начала игры
+	if (!bStarted)
+	{
+		if (!W->HasBegunPlay()) return;
+		StartWorld(*W);
+	}
 
 	// герой может появиться (или смениться) позже подсистемы
 	ATPCharacter* H = Cast<ATPCharacter>(UGameplayStatics::GetPlayerPawn(W, 0));
@@ -304,7 +325,7 @@ void UTPStorySubsystem::SpawnCitizens()
 		UE_LOG(LogTeni, Warning, TEXT("Нет точек прогулок от генератора города — жители гуляют вокруг старта"));
 		for (int32 I = 0; I < 24; ++I)
 		{
-			const float A = 2.f * UE_PI * I / 24.f, R = 600.f + (I % 3) * 700.f;
+			const float A = 2.f * PI * I / 24.f, R = 600.f + (I % 3) * 700.f;
 			WalkPoints.Add(PlayerStart + FVector(FMath::Cos(A) * R, FMath::Sin(A) * R, 0.f));
 		}
 	}
@@ -760,7 +781,7 @@ bool UTPStorySubsystem::PickSummit(const FVector& From, FRandomStream& Rng, FVec
 	float BestZ = -1e9f;
 	for (int32 I = 0; I < 160; ++I)
 	{
-		const float A = Rng.FRandRange(0.f, 2.f * UE_PI);
+		const float A = Rng.FRandRange(0.f, 2.f * PI);
 		const float R = 6000.f * FMath::Sqrt(Rng.FRand());
 		const FVector XY = From + FVector(FMath::Cos(A) * R, FMath::Sin(A) * R, 0.f);
 		if (CityBounds.IsValid && !CityBounds.IsInsideXY(XY)) continue;
@@ -1278,10 +1299,9 @@ FString UTPStorySubsystem::RaceTypeName(ETPRaceType Type)
 
 FString UTPStorySubsystem::FormatTime(float Seconds)
 {
-	Seconds = FMath::Max(0.f, Seconds);
-	const int32 M = FMath::FloorToInt(Seconds / 60.f);
-	const float S = Seconds - M * 60.f;
-	return FString::Printf(TEXT("%d:%04.1f"), M, S);
+	// сначала округляем до десятых, иначе 59.96 с покажется как «0:60.0»
+	const int32 Tenths = FMath::RoundToInt(FMath::Max(0.f, Seconds) * 10.f);
+	return FString::Printf(TEXT("%d:%02d.%d"), Tenths / 600, (Tenths / 10) % 60, Tenths % 10);
 }
 
 FString UTPStorySubsystem::MedalName(int32 Medal)

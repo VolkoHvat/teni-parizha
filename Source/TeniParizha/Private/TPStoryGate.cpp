@@ -1,4 +1,4 @@
-// Тени Парижа — отметки гонок Лиги крыш.
+﻿// Тени Парижа — отметки гонок Лиги крыш.
 #include "TPStoryGate.h"
 #include "TPTypes.h"
 #include "Components/StaticMeshComponent.h"
@@ -6,7 +6,9 @@
 #include "Engine/StaticMesh.h"
 #include "Materials/MaterialInterface.h"
 #include "Materials/MaterialInstanceDynamic.h"
-#include "UObject/ConstructorHelpers.h"
+#include "Engine/World.h"
+#include "GameFramework/PlayerController.h"
+#include "Camera/PlayerCameraManager.h"
 
 namespace TPGateConst
 {
@@ -19,9 +21,10 @@ ATPStoryGate::ATPStoryGate()
 	PrimaryActorTick.bCanEverTick = true;
 	SetActorEnableCollision(false);
 
-	static ConstructorHelpers::FObjectFinder<UStaticMesh> SphereMesh(TEXT("/Engine/BasicShapes/Sphere.Sphere"));
-	static ConstructorHelpers::FObjectFinder<UStaticMesh> CylinderMesh(TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
-	static ConstructorHelpers::FObjectFinder<UStaticMesh> CubeMesh(TEXT("/Engine/BasicShapes/Cube.Cube"));
+	// LoadObject вместо ConstructorHelpers: без ассета не падаем, а просто остаёмся без меша
+	UStaticMesh* SphereMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Sphere.Sphere"), nullptr, LOAD_NoWarn | LOAD_Quiet);
+	UStaticMesh* CylinderMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cylinder.Cylinder"), nullptr, LOAD_NoWarn | LOAD_Quiet);
+	UStaticMesh* CubeMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube"), nullptr, LOAD_NoWarn | LOAD_Quiet);
 
 	Root = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
 	RootComponent = Root;
@@ -45,26 +48,26 @@ ATPStoryGate::ATPStoryGate()
 		const FName Name(*FString::Printf(TEXT("Bead%d"), I));
 		UStaticMeshComponent* B = CreateDefaultSubobject<UStaticMeshComponent>(Name);
 		B->SetupAttachment(RingPivot);
-		if (SphereMesh.Succeeded()) B->SetStaticMesh(SphereMesh.Object);
+		if (SphereMesh) B->SetStaticMesh(SphereMesh);
 		B->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 		B->SetGenerateOverlapEvents(false);
 		B->SetCastShadow(false);
 		B->SetCanEverAffectNavigation(false);
-		const float A = 2.f * UE_PI * I / TPGateConst::NumBeads;
+		const float A = 2.f * PI * I / TPGateConst::NumBeads;
 		B->SetRelativeLocation(FVector(0.f, FMath::Cos(A) * TPGateConst::RingRadius, FMath::Sin(A) * TPGateConst::RingRadius));
 		B->SetRelativeScale3D(FVector(0.26f));
 		Segments.Add(B);
 	}
 
-	Pole = MakePart(TEXT("Pole"), Root, CylinderMesh.Succeeded() ? CylinderMesh.Object : nullptr);
+	Pole = MakePart(TEXT("Pole"), Root, CylinderMesh);
 	Pole->SetRelativeLocation(FVector(0.f, 0.f, 20.f));
 	Pole->SetRelativeScale3D(FVector(0.07f, 0.07f, 2.6f));
 
-	Cloth = MakePart(TEXT("Cloth"), Root, CubeMesh.Succeeded() ? CubeMesh.Object : nullptr);
+	Cloth = MakePart(TEXT("Cloth"), Root, CubeMesh);
 	Cloth->SetRelativeLocation(FVector(0.f, 45.f, 118.f));
 	Cloth->SetRelativeScale3D(FVector(0.03f, 0.9f, 0.55f));
 
-	Beam = MakePart(TEXT("Beam"), Root, CylinderMesh.Succeeded() ? CylinderMesh.Object : nullptr);
+	Beam = MakePart(TEXT("Beam"), Root, CylinderMesh);
 	Beam->SetRelativeLocation(FVector(0.f, 0.f, 3200.f));
 	Beam->SetRelativeScale3D(FVector(0.18f, 0.18f, 60.f));
 
@@ -156,5 +159,17 @@ void ATPStoryGate::Tick(float DeltaSeconds)
 	else if (Kind == ETPGateKind::Ring) RingPivot->SetRelativeScale3D(FVector(Pulse));
 	if (Kind == ETPGateKind::Flag)
 		Cloth->SetRelativeRotation(FRotator(0.f, 12.f * FMath::Sin(Age * 5.f), 4.f * FMath::Sin(Age * 7.3f)));
-	Glow->SetIntensity(6000.f * Pulse);
+	// свет — только у ближних отметок (охота за флажками зажигает до шести сразу):
+	// гаснет плавно между 40 и 60 м от камеры, дальше выключен совсем
+	float Fade = 1.f;
+	if (const UWorld* W = GetWorld())
+		if (const APlayerController* PC = W->GetFirstPlayerController())
+			if (PC->PlayerCameraManager)
+			{
+				const float D = FVector::Dist(PC->PlayerCameraManager->GetCameraLocation(), GetActorLocation());
+				Fade = 1.f - FMath::Clamp((D - 4000.f) / 2000.f, 0.f, 1.f);
+			}
+	const bool bLit = Highlight == 1 && Fade > 0.f;
+	if (Glow->IsVisible() != bLit) Glow->SetVisibility(bLit);
+	if (bLit) Glow->SetIntensity(6000.f * Pulse * Fade);
 }

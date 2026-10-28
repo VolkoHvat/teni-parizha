@@ -1,4 +1,4 @@
-// Тени Парижа — житель квартала.
+﻿// Тени Парижа — житель квартала.
 #include "TPCitizen.h"
 #include "TeniParizha.h"
 #include "TPIdentitySubsystem.h"
@@ -62,19 +62,16 @@ ATPCitizen::ATPCitizen()
 	GetMesh()->SetRelativeRotation(MeshRelRot);
 	GetMesh()->SetCollisionProfileName(TEXT("CharacterMesh"));
 
+	// манекен пакета Third Person UE4 (женского меша в 4.27 нет — у всех один, рост и цвет различают)
 	MaleMeshCandidates = {
-		TEXT("/Game/Characters/Mannequins/Meshes/SKM_Manny_Simple.SKM_Manny_Simple"),
-		TEXT("/Game/Characters/Mannequins/Meshes/SKM_Manny.SKM_Manny"),
-		TEXT("/Game/Characters/Mannequins/Meshes/SKM_Quinn_Simple.SKM_Quinn_Simple") };
+		TEXT("/Game/Mannequin/Character/Mesh/SK_Mannequin.SK_Mannequin"),
+		TEXT("/Game/AnimStarterPack/UE4_Mannequin/Mesh/SK_Mannequin.SK_Mannequin") };
 	FemaleMeshCandidates = {
-		TEXT("/Game/Characters/Mannequins/Meshes/SKM_Quinn_Simple.SKM_Quinn_Simple"),
-		TEXT("/Game/Characters/Mannequins/Meshes/SKM_Quinn.SKM_Quinn"),
-		TEXT("/Game/Characters/Mannequins/Meshes/SKM_Manny_Simple.SKM_Manny_Simple"),
-		TEXT("/Game/Characters/Mannequins/Meshes/SKM_Manny.SKM_Manny") };
+		TEXT("/Game/Mannequin/Character/Mesh/SK_Mannequin_Female.SK_Mannequin_Female"),
+		TEXT("/Game/Mannequin/Character/Mesh/SK_Mannequin.SK_Mannequin"),
+		TEXT("/Game/AnimStarterPack/UE4_Mannequin/Mesh/SK_Mannequin.SK_Mannequin") };
 	AnimClassCandidates = {
-		TEXT("/Game/Characters/Mannequins/Anims/Unarmed/ABP_Unarmed.ABP_Unarmed_C"),
-		TEXT("/Game/Characters/Mannequins/Animations/ABP_Manny.ABP_Manny_C"),
-		TEXT("/Game/Characters/Mannequins/Animations/ABP_Quinn.ABP_Quinn_C") };
+		TEXT("/Game/Mannequin/Animations/ThirdPerson_AnimBP.ThirdPerson_AnimBP_C") };
 }
 
 void ATPCitizen::InitCitizen(int32 InIdentityIndex, const TArray<FVector>& InWalkPoints, bool bInStationary)
@@ -203,7 +200,7 @@ void ATPCitizen::ApplyAppearance()
 		if (USkeletalMesh* SM = LoadObject<USkeletalMesh>(nullptr, *P, nullptr, LOAD_NoWarn | LOAD_Quiet)) { M->SetSkeletalMesh(SM); break; }
 	for (const FString& P : AnimClassCandidates)
 		if (UClass* C = LoadClass<UAnimInstance>(nullptr, *P, nullptr, LOAD_NoWarn | LOAD_Quiet)) { M->SetAnimInstanceClass(C); break; }
-	const bool bHasMesh = M->GetSkeletalMeshAsset() != nullptr;
+	const bool bHasMesh = M->SkeletalMesh != nullptr;
 
 	// рост — масштабом, цвета — динамическими материалами
 	SetActorScale3D(FVector(FMath::Clamp(Id.Height, 0.85f, 1.1f)));
@@ -216,6 +213,7 @@ void ATPCitizen::ApplyAppearance()
 			if (!D) continue;
 			const FLinearColor C = FLinearColor(I == 0 ? Id.Coat : Id.Pants);
 			// разные версии манекена называют параметр цвета по-разному
+			D->SetVectorParameterValue(TEXT("BodyColor"), C);   // M_UE4Man_Body манекена 4.27
 			D->SetVectorParameterValue(TEXT("Tint"), C);
 			D->SetVectorParameterValue(TEXT("Paint Tint"), C);
 			D->SetVectorParameterValue(TEXT("BaseColor"), C);
@@ -353,7 +351,7 @@ void ATPCitizen::PickNewTarget()
 	}
 	if (!bFound)
 	{
-		const float A = Rng.FRandRange(0.f, 2.f * UE_PI), R = Rng.FRandRange(300.f, 1200.f);
+		const float A = Rng.FRandRange(0.f, 2.f * PI), R = Rng.FRandRange(300.f, 1200.f);
 		Best = HomeLocation + FVector(FMath::Cos(A) * R, FMath::Sin(A) * R, 0.f);
 	}
 	Target = Best;
@@ -521,7 +519,7 @@ void ATPCitizen::Knockdown(const FVector& PushDir, ACharacter* Hero)
 	const FVector Push = PushDir * 420.f + FVector(0.f, 0.f, 180.f);
 	USkeletalMeshComponent* M = GetMesh();
 	SetAccessoriesVisible(false);
-	if (M->GetSkeletalMeshAsset() && M->GetPhysicsAsset())
+	if (M->SkeletalMesh && M->GetPhysicsAsset())
 	{
 		// короткий рэгдолл
 		bRagdoll = true;

@@ -1,4 +1,4 @@
-// Тени Парижа — житель квартала: гуляет по улицам, болтает с соседями, оглядывается на героя,
+﻿// Тени Парижа — житель квартала: гуляет по улицам, болтает с соседями, оглядывается на героя,
 // расступается и падает, если его сбить на бегу. Личность берётся из UTPIdentitySubsystem.
 // Владелец модуля: агент «жители, сюжет и интерфейс».
 #pragma once
@@ -90,8 +90,8 @@ protected:
 	void EnterIdle(float MinTime, float MaxTime);
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Житель") int32 IdentityIndex = -1;
-	UPROPERTY(Transient) TArray<TObjectPtr<UMaterialInstanceDynamic>> Mids;
-	UPROPERTY(Transient) TArray<TObjectPtr<UStaticMeshComponent>> Accessories;
+	UPROPERTY(Transient) TArray<UMaterialInstanceDynamic*> Mids;
+	UPROPERTY(Transient) TArray<UStaticMeshComponent*> Accessories;
 
 	TWeakObjectPtr<ATPCitizen> ChatPartner;
 	TArray<FVector> WalkPoints;

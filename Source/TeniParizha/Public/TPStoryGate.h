@@ -1,4 +1,4 @@
-// Тени Парижа — отметки гонок Лиги крыш: светящиеся кольца-ворота, флажки и маяк вершины.
+﻿// Тени Парижа — отметки гонок Лиги крыш: светящиеся кольца-ворота, флажки и маяк вершины.
 // Собраны из простых мешей /Engine/BasicShapes — без собственных ассетов.
 // Владелец модуля: агент «жители, сюжет и интерфейс».
 #pragma once
@@ -34,16 +34,16 @@ public:
 	void SetHighlight(int32 Level);
 
 protected:
-	UPROPERTY(VisibleAnywhere) TObjectPtr<USceneComponent> Root;
-	UPROPERTY(VisibleAnywhere) TObjectPtr<USceneComponent> RingPivot;
-	UPROPERTY(VisibleAnywhere) TArray<TObjectPtr<UStaticMeshComponent>> Segments;
-	UPROPERTY(VisibleAnywhere) TObjectPtr<UStaticMeshComponent> Pole;
-	UPROPERTY(VisibleAnywhere) TObjectPtr<UStaticMeshComponent> Cloth;
-	UPROPERTY(VisibleAnywhere) TObjectPtr<UStaticMeshComponent> Beam;
-	UPROPERTY(VisibleAnywhere) TObjectPtr<UPointLightComponent> Glow;
-	UPROPERTY(Transient) TObjectPtr<UMaterialInstanceDynamic> MainMat;
-	UPROPERTY(Transient) TObjectPtr<UMaterialInstanceDynamic> BeamMat;
-	UPROPERTY(Transient) TObjectPtr<UMaterialInstanceDynamic> PoleMat;
+	UPROPERTY(VisibleAnywhere) USceneComponent* Root = nullptr;
+	UPROPERTY(VisibleAnywhere) USceneComponent* RingPivot = nullptr;
+	UPROPERTY(VisibleAnywhere) TArray<UStaticMeshComponent*> Segments;
+	UPROPERTY(VisibleAnywhere) UStaticMeshComponent* Pole = nullptr;
+	UPROPERTY(VisibleAnywhere) UStaticMeshComponent* Cloth = nullptr;
+	UPROPERTY(VisibleAnywhere) UStaticMeshComponent* Beam = nullptr;
+	UPROPERTY(VisibleAnywhere) UPointLightComponent* Glow = nullptr;
+	UPROPERTY(Transient) UMaterialInstanceDynamic* MainMat = nullptr;
+	UPROPERTY(Transient) UMaterialInstanceDynamic* BeamMat = nullptr;
+	UPROPERTY(Transient) UMaterialInstanceDynamic* PoleMat = nullptr;
 
 	ETPGateKind Kind = ETPGateKind::Ring;
 	int32 Highlight = 1;

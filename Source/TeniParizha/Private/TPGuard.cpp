@@ -93,13 +93,10 @@ ATPGuard::ATPGuard()
 	Musket->SetRelativeScale3D(FVector(0.035f, 0.035f, 1.3f));
 
 	MeshCandidates = {
-		TEXT("/Game/Characters/Mannequins/Meshes/SKM_Manny_Simple.SKM_Manny_Simple"),
-		TEXT("/Game/Characters/Mannequins/Meshes/SKM_Quinn_Simple.SKM_Quinn_Simple"),
-		TEXT("/Game/Characters/Mannequins/Meshes/SKM_Manny.SKM_Manny") };
+		TEXT("/Game/Mannequin/Character/Mesh/SK_Mannequin.SK_Mannequin"),
+		TEXT("/Game/AnimStarterPack/UE4_Mannequin/Mesh/SK_Mannequin.SK_Mannequin") };
 	AnimClassCandidates = {
-		TEXT("/Game/Characters/Mannequins/Anims/Unarmed/ABP_Unarmed.ABP_Unarmed_C"),
-		TEXT("/Game/Characters/Mannequins/Animations/ABP_Manny.ABP_Manny_C"),
-		TEXT("/Game/Characters/Mannequins/Animations/ABP_Quinn.ABP_Quinn_C") };
+		TEXT("/Game/Mannequin/Animations/ThirdPerson_AnimBP.ThirdPerson_AnimBP_C") };
 }
 
 void ATPGuard::BeginPlay()
@@ -148,7 +145,7 @@ void ATPGuard::ApplyAppearance()
 
 	// мундир: синий у пехоты, темнее с красным отливом у мушкетёров; параметров может не быть — не страшно
 	const FLinearColor Coat = bMusketeer ? CoatColor * 0.7f + FLinearColor(0.14f, 0.02f, 0.02f, 0.f) : CoatColor;
-	static const FName ColorParams[] = { FName(TEXT("Tint")), FName(TEXT("Paint Tint")), FName(TEXT("BaseColor")), FName(TEXT("Base Color")), FName(TEXT("Color")) };
+	static const FName ColorParams[] = { FName(TEXT("BodyColor")), FName(TEXT("Tint")), FName(TEXT("Paint Tint")), FName(TEXT("BaseColor")), FName(TEXT("Base Color")), FName(TEXT("Color")) };
 	for (int32 i = 0; i < M->GetNumMaterials(); ++i)
 	{
 		if (UMaterialInstanceDynamic* MID = M->CreateAndSetMaterialInstanceDynamic(i))

@@ -1,4 +1,4 @@
-// Тени Парижа — интерфейс: подсказки, здоровье, миникарта, диалоги, альбом портретов, меню паузы.
+﻿// Тени Парижа — интерфейс: подсказки, здоровье, миникарта, диалоги, альбом портретов, меню паузы.
 // Владелец модуля: агент «жители, сюжет и интерфейс». Рисуется через Canvas — без ассетов виджетов.
 #pragma once
 
@@ -168,9 +168,9 @@ protected:
 	TWeakObjectPtr<AActor> Environment;
 
 	/* шрифты: Roboto из движка (кириллица есть); масштабы под нужную высоту строки */
-	UPROPERTY(Transient) TObjectPtr<UFont> FontS;
-	UPROPERTY(Transient) TObjectPtr<UFont> FontM;
-	UPROPERTY(Transient) TObjectPtr<UFont> FontL;
+	UPROPERTY(Transient) UFont* FontS = nullptr;
+	UPROPERTY(Transient) UFont* FontM = nullptr;
+	UPROPERTY(Transient) UFont* FontL = nullptr;
 	float ScS = 1.f, ScM = 1.f, ScL = 1.f, ScXL = 1.f;
 	float BaseHS = 0.f, BaseHM = 0.f, BaseHL = 0.f;
 };

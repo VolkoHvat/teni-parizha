@@ -1,4 +1,4 @@
-#include "TPIdentitySubsystem.h"
+﻿#include "TPIdentitySubsystem.h"
 #include "TeniParizha.h"
 
 /* Таблицы перенесены из первой версии игры (legacy/teni_v1/game2/ident.c) без изменений текста. */

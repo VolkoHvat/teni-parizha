@@ -1,10 +1,13 @@
-// Тени Парижа — сюжет: главы, Лига крыш (12 гонок шести типов, медали, награды-способности),
+﻿// Тени Парижа — сюжет: главы, Лига крыш (12 гонок шести типов, медали, награды-способности),
 // альбом «Лица квартала», знакомства с жителями, сохранение. Порт legacy/teni_v1/game2/game.c.
 // Владелец модуля: агент «жители, сюжет и интерфейс».
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Subsystems/WorldSubsystem.h"
+#include "Tickable.h"
+#include "Engine/EngineTypes.h"
+#include "TimerManager.h"
 #include "TPStorySubsystem.generated.h"
 
 class ATPCharacter;
@@ -13,6 +16,7 @@ class ATPStoryGate;
 class ATPHUD;
 class ATPEnvironment;
 class UTPIdentitySubsystem;
+class AActor;
 
 /** Тип гонки Лиги крыш. */
 UENUM(BlueprintType)
@@ -50,7 +54,8 @@ struct FTPRaceCourse
 };
 
 UCLASS()
-class TENIPARIZHA_API UTPStorySubsystem : public UTickableWorldSubsystem
+// В UE 4.27 нет UTickableWorldSubsystem: тик даёт FTickableGameObject (CDO не тикает — см. GetTickableTickType)
+class TENIPARIZHA_API UTPStorySubsystem : public UWorldSubsystem, public FTickableGameObject
 {
 	GENERATED_BODY()
 
@@ -58,11 +63,16 @@ public:
 	static constexpr int32 NumRaces = 12;
 	static constexpr int32 NumAbilities = 6;
 
+	/* ---- USubsystem ---- */
+	virtual bool ShouldCreateSubsystem(UObject* Outer) const override;
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
 	virtual void Deinitialize() override;
-	virtual void OnWorldBeginPlay(UWorld& InWorld) override;
+	/* ---- FTickableGameObject ---- */
 	virtual void Tick(float DeltaTime) override;
 	virtual TStatId GetStatId() const override;
+	virtual ETickableTickType GetTickableTickType() const override;
+	virtual bool IsTickable() const override;
+	virtual UWorld* GetTickableGameObjectWorld() const override { return GetWorld(); }
 
 	/* ---------- сюжет (для интерфейса) ---------- */
 	UFUNCTION(BlueprintPure, Category = "Сюжет") int32 GetChapter() const { return Chapter; }
@@ -120,8 +130,6 @@ public:
 	static FString AbilityDesc(int32 Ability);
 
 protected:
-	virtual bool DoesSupportWorldType(const EWorldType::Type WorldType) const override;
-
 	UFUNCTION() void HandleInteract();
 
 	void LoadProgress();
@@ -171,6 +179,10 @@ protected:
 	float AutoSaveTimer = 0.f;
 
 	/* мир */
+	/** Initialize прошёл, Deinitialize ещё нет */
+	bool bInitialized = false;
+	/** старт игры (замена OnWorldBeginPlay): ждём W->HasBegunPlay() в Tick */
+	void StartWorld(UWorld& InWorld);
 	bool bStarted = false;
 	bool bSpawned = false;
 	bool bPendingPrologue = false;
@@ -198,7 +210,7 @@ protected:
 	int32 FlagsLeft = 0;
 	TArray<bool> GotFlag;
 	TArray<FTPRaceCourse> Courses;
-	UPROPERTY(Transient) TArray<TObjectPtr<ATPStoryGate>> GateActors;
+	UPROPERTY(Transient) TArray<ATPStoryGate*> GateActors;
 	TWeakObjectPtr<ATPCitizen> RaceRunner;
 	TArray<FVector> RunnerPath;
 	TArray<int32> RunnerPathGate;

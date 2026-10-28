@@ -1,4 +1,4 @@
-// Тени Парижа — интерфейс на Canvas: панели сюжета и гонок, часы, здоровье, миникарта, отметки над головами,
+﻿// Тени Парижа — интерфейс на Canvas: панели сюжета и гонок, часы, здоровье, миникарта, отметки над головами,
 // диалоги, меню гонок, справка, пауза и альбом «Лица квартала» (128 портретов).
 #include "TPHUD.h"
 #include "TeniParizha.h"
@@ -503,7 +503,7 @@ bool ATPHUD::AnyHit(std::initializer_list<FKey> Keys) const
 void ATPHUD::UpdateInput()
 {
 	if (!PlayerOwner || GFrameCounter == UIOpenFrame) return;
-	// пока игра на паузе, действия Enhanced Input не срабатывают — клавиши меню опрашиваем сами
+	// пока игра на паузе, привязки BindAction не срабатывают — клавиши меню опрашиваем сами
 	const bool bUp = AnyHit({EKeys::W, EKeys::Up, EKeys::Gamepad_DPad_Up, EKeys::Gamepad_LeftStick_Up});
 	const bool bDown = AnyHit({EKeys::S, EKeys::Down, EKeys::Gamepad_DPad_Down, EKeys::Gamepad_LeftStick_Down});
 	const bool bLeft = AnyHit({EKeys::A, EKeys::Left, EKeys::Gamepad_DPad_Left, EKeys::Gamepad_LeftStick_Left});
@@ -729,7 +729,7 @@ void ATPHUD::Disc(float CX, float CY, float RX, float RY, const FLinearColor& Co
 	const FVector2D Ctr(CX, CY);
 	for (int32 I = 0; I < Sides; ++I)
 	{
-		const float A0 = 2.f * UE_PI * I / Sides, A1 = 2.f * UE_PI * (I + 1) / Sides;
+		const float A0 = 2.f * PI * I / Sides, A1 = 2.f * PI * (I + 1) / Sides;
 		T.Add(TPUI::MakeTri(Ctr, FVector2D(CX + FMath::Cos(A0) * RX, CY + FMath::Sin(A0) * RY), FVector2D(CX + FMath::Cos(A1) * RX, CY + FMath::Sin(A1) * RY), Color));
 	}
 	TPUI::DrawTriList(Canvas, T);
@@ -744,7 +744,7 @@ void ATPHUD::Ring(float CX, float CY, float R, float Thick, const FLinearColor& 
 	T.Reserve(Sides * 2);
 	for (int32 I = 0; I < Sides; ++I)
 	{
-		const float A0 = 2.f * UE_PI * I / Sides, A1 = 2.f * UE_PI * (I + 1) / Sides;
+		const float A0 = 2.f * PI * I / Sides, A1 = 2.f * PI * (I + 1) / Sides;
 		const FVector2D O0(CX + FMath::Cos(A0) * R, CY + FMath::Sin(A0) * R), O1(CX + FMath::Cos(A1) * R, CY + FMath::Sin(A1) * R);
 		const FVector2D I0(CX + FMath::Cos(A0) * Ri, CY + FMath::Sin(A0) * Ri), I1(CX + FMath::Cos(A1) * Ri, CY + FMath::Sin(A1) * Ri);
 		T.Add(TPUI::MakeTri(O0, O1, I1, Color));
