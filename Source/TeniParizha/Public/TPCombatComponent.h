@@ -1,4 +1,4 @@
-// Тени Парижа — бой: серии ударов, блоки, контратаки по сигналу, уклонение, тихое устранение со спины.
+﻿// Тени Парижа — бой: серии ударов, блоки, контратаки по сигналу, уклонение, тихое устранение со спины.
 // Владелец модуля: агент «бой и стража».
 // Один и тот же компонент стоит у героя и у стражи (ATPGuard):
 //  * у героя — автоприцел, выпад к цели, серии из трёх ударов, контратака, уклонение, восстановление, возрождение;
@@ -63,11 +63,11 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Бой") float MaxHealth = 100.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Бой") float Health = 100.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Бой") float AttackDamage = 22.f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Бой|Анимации") TArray<TObjectPtr<UAnimMontage>> AttackMontages;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Бой|Анимации") TObjectPtr<UAnimMontage> CounterMontage;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Бой|Анимации") TObjectPtr<UAnimMontage> BlockMontage;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Бой|Анимации") TObjectPtr<UAnimMontage> HitMontage;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Бой|Анимации") TObjectPtr<UAnimMontage> DodgeMontage;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Бой|Анимации") TArray<UAnimMontage*> AttackMontages;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Бой|Анимации") UAnimMontage* CounterMontage = nullptr;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Бой|Анимации") UAnimMontage* BlockMontage = nullptr;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Бой|Анимации") UAnimMontage* HitMontage = nullptr;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Бой|Анимации") UAnimMontage* DodgeMontage = nullptr;
 
 	/* ---- параметры баланса ---- */
 	/** радиус автоприцела героя в бою / вне боя, см */

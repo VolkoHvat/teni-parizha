@@ -1,4 +1,4 @@
-// Бой в духе AC3/Unity, перенесён из legacy/teni_v1/game2/game.c (combat_update, guard_hit, combat_target, combat_threat).
+﻿// Бой в духе AC3/Unity, перенесён из legacy/teni_v1/game2/game.c (combat_update, guard_hit, combat_target, combat_threat).
 #include "TPCombatComponent.h"
 #include "TeniParizha.h"
 #include "TPGuard.h"

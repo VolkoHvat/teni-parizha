@@ -1,4 +1,4 @@
-// Тени Парижа — базовый класс анимации героя (переменные паркура для AnimBP).
+﻿// Тени Парижа — базовый класс анимации героя (переменные паркура для AnimBP).
 #include "TPTraversalAnimInstance.h"
 #include "TPTraversalComponent.h"
 #include "GameFramework/Character.h"

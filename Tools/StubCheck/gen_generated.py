@@ -6,7 +6,7 @@ import os
 import re
 import sys
 
-DECL_RE = re.compile(r'\b(class|struct)\s+(?:alignas\([^)]*\)\s*)?(?:[A-Z0-9_]+_API\s+)?([A-Za-z_]\w*)\s*(?:final\s*)?(?::\s*(?:public|protected|private)?\s*([\w:]+(?:<[^>{]*>)?))?\s*\{', re.S)
+DECL_RE = re.compile(r'\b(class|struct)\s+(?:alignas\([^)]*\)\s*)?(?:[A-Z0-9_]+_API\s+)?([A-Za-z_]\w*)\s*(?:final\s*)?(?::\s*(?:public|protected|private)?\s*([\w:]+(?:<[^>{]*>)?)(?:\s*,\s*(?:public|protected|private)?\s*[\w:]+(?:<[^>{]*>)?)*)?\s*\{', re.S)
 
 
 def strip_comments(text):

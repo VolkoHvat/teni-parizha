@@ -1,4 +1,4 @@
-#include "TPGuard.h"
+﻿#include "TPGuard.h"
 #include "TeniParizha.h"
 #include "TPGuardController.h"
 #include "TPCombatComponent.h"
@@ -133,7 +133,7 @@ ATPGuardController* ATPGuard::GetGuardController() const
 void ATPGuard::ApplyAppearance()
 {
 	USkeletalMeshComponent* M = GetMesh();
-	if (!M->GetSkeletalMeshAsset())
+	if (!M->SkeletalMesh)
 	{
 		for (const FString& P : MeshCandidates)
 			if (USkeletalMesh* SM = LoadObject<USkeletalMesh>(nullptr, *P, nullptr, LOAD_NoWarn | LOAD_Quiet)) { M->SetSkeletalMesh(SM); break; }
@@ -143,7 +143,7 @@ void ATPGuard::ApplyAppearance()
 		for (const FString& P : AnimClassCandidates)
 			if (UClass* C = LoadClass<UAnimInstance>(nullptr, *P, nullptr, LOAD_NoWarn | LOAD_Quiet)) { M->SetAnimInstanceClass(C); break; }
 	}
-	if (!M->GetSkeletalMeshAsset())
+	if (!M->SkeletalMesh)
 		UE_LOG(LogTeni, Warning, TEXT("Стражник без меша: добавьте Third Person через Content Browser → Add → Add Feature or Content Pack"));
 
 	// мундир: синий у пехоты, темнее с красным отливом у мушкетёров; параметров может не быть — не страшно
@@ -168,7 +168,7 @@ void ATPGuard::ApplyAppearance()
 		}
 	};
 
-	const bool bHead = M->GetSkeletalMeshAsset() && M->DoesSocketExist(HatSocket);
+	const bool bHead = M->SkeletalMesh && M->DoesSocketExist(HatSocket);
 	USceneComponent* HatParent = bHead ? static_cast<USceneComponent*>(M) : static_cast<USceneComponent*>(GetCapsuleComponent());
 	const FName Sock = bHead ? HatSocket : NAME_None;
 	// без кости head — шляпа просто над капсулой, ось конуса вверх
@@ -357,7 +357,7 @@ void ATPGuard::KnockOut(float Duration, AActor* By, bool bSilent)
 	if (Musket) Musket->SetVisibility(false);
 
 	USkeletalMeshComponent* M = GetMesh();
-	if (M->GetSkeletalMeshAsset() && M->GetPhysicsAsset())
+	if (M->SkeletalMesh && M->GetPhysicsAsset())
 	{
 		M->SetCollisionProfileName(TEXT("Ragdoll"));
 		M->SetSimulatePhysics(true);

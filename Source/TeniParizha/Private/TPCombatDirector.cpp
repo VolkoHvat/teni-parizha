@@ -1,4 +1,4 @@
-#include "TPCombatDirector.h"
+﻿#include "TPCombatDirector.h"
 #include "TeniParizha.h"
 #include "TPGuard.h"
 #include "TPCombatComponent.h"
@@ -29,22 +29,28 @@ bool UTPCombatDirector::ShouldCreateSubsystem(UObject* Outer) const
 void UTPCombatDirector::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
+	bInitialized = true;
 }
 
 void UTPCombatDirector::Deinitialize()
 {
+	bInitialized = false;
 	if (UWorld* W = GetWorld()) W->GetTimerManager().ClearTimer(SpawnTimer);
 	Guards.Reset();
 	TokenOwner.Reset();
 	Super::Deinitialize();
 }
 
-void UTPCombatDirector::OnWorldBeginPlay(UWorld& InWorld)
+ETickableTickType UTPCombatDirector::GetTickableTickType() const
 {
-	Super::OnWorldBeginPlay(InWorld);
-	// генератор города создаётся в StartPlay режима игры и может перестроиться в своём BeginPlay —
-	// поэтому расставляем стражу чуть позже и повторяем попытку, пока не появятся точки прогулок
-	InWorld.GetTimerManager().SetTimer(SpawnTimer, this, &UTPCombatDirector::TrySpawnGuards, 0.5f, true, 0.5f);
+	// объект-образец класса (CDO) не должен тикать
+	return HasAnyFlags(RF_ClassDefaultObject) ? ETickableTickType::Never : ETickableTickType::Conditional;
+}
+
+bool UTPCombatDirector::IsTickable() const
+{
+	const UWorld* W = GetWorld();
+	return bInitialized && W && W->IsGameWorld() && !IsPendingKill();
 }
 
 TStatId UTPCombatDirector::GetStatId() const
@@ -59,9 +65,16 @@ ACharacter* UTPCombatDirector::GetHero() const
 
 void UTPCombatDirector::Tick(float DeltaTime)
 {
-	Super::Tick(DeltaTime);
 	UWorld* W = GetWorld();
 	if (!W) return;
+
+	// генератор города создаётся в StartPlay режима игры и может перестроиться в своём BeginPlay —
+	// поэтому расставляем стражу после начала игры, чуть позже, и повторяем попытку, пока не появятся точки прогулок
+	if (!bSpawnScheduled && W->HasBegunPlay())
+	{
+		bSpawnScheduled = true;
+		W->GetTimerManager().SetTimer(SpawnTimer, this, &UTPCombatDirector::TrySpawnGuards, 0.5f, true, 0.5f);
+	}
 
 	if (TokenCooldown > 0.f) TokenCooldown -= DeltaTime;
 	// жетон держит только стражник, который в погоне и замахивается

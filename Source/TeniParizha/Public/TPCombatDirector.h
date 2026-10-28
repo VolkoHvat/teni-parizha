@@ -1,4 +1,4 @@
-// Тени Парижа — «режиссёр боя»: список стражи, жетон атаки (нападает только один стражник одновременно),
+﻿// Тени Парижа — «режиссёр боя»: список стражи, жетон атаки (нападает только один стражник одновременно),
 // общая тревога, свидетели, паника горожан, замедление времени на контратаке, расстановка стражи при старте.
 // Владелец модуля: агент «бой и стража».
 #pragma once
@@ -6,6 +6,7 @@
 #include "CoreMinimal.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "TimerManager.h"
+#include "Tickable.h"
 #include "TPCombatDirector.generated.h"
 
 class ATPGuard;
@@ -16,8 +17,9 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FTPCombatMessage, const FString&, Te
 /** шум драки или выстрела: горожане в радиусе разбегаются */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FTPCombatPanic, FVector, Location, float, Radius);
 
+// В UE 4.27 нет UTickableWorldSubsystem: тик даёт FTickableGameObject (CDO не тикает — см. GetTickableTickType)
 UCLASS()
-class TENIPARIZHA_API UTPCombatDirector : public UTickableWorldSubsystem
+class TENIPARIZHA_API UTPCombatDirector : public UWorldSubsystem, public FTickableGameObject
 {
 	GENERATED_BODY()
 
@@ -25,9 +27,12 @@ public:
 	virtual bool ShouldCreateSubsystem(UObject* Outer) const override;
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
 	virtual void Deinitialize() override;
-	virtual void OnWorldBeginPlay(UWorld& InWorld) override;
+	/* ---- FTickableGameObject ---- */
 	virtual void Tick(float DeltaTime) override;
 	virtual TStatId GetStatId() const override;
+	virtual ETickableTickType GetTickableTickType() const override;
+	virtual bool IsTickable() const override;
+	virtual UWorld* GetTickableGameObjectWorld() const override { return GetWorld(); }
 
 	/** вся стража уровня (для интерфейса и миникарты) */
 	UFUNCTION(BlueprintPure, Category = "Стража") TArray<ATPGuard*> GetGuards() const;
@@ -93,6 +98,9 @@ protected:
 	FTimerHandle SpawnTimer;
 	int32 SpawnAttempts = 0;
 	bool bSpawned = false;
+	/** расстановка стражи запущена (ждём HasBegunPlay в Tick — так не зависим от OnWorldBeginPlay) */
+	bool bSpawnScheduled = false;
+	bool bInitialized = false;
 	FString LastMessage;
 	double LastMessageTime = -100.0;
 };

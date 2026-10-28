@@ -1,4 +1,4 @@
-// Тени Парижа — свободный бег (паркур) в духе Assassin's Creed.
+﻿// Тени Парижа — свободный бег (паркур) в духе Assassin's Creed.
 // Владелец модуля: агент «паркур». Публичный интерфейс ниже используют персонаж и другие системы — не менять без согласования.
 #pragma once
 
@@ -64,17 +64,17 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Паркур") float HurtHeight = 700.f;
 
 	/* ---- монтажи анимаций (необязательны: без них работает логика, поза — из AnimBP) ---- */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Паркур|Анимации") TObjectPtr<UAnimMontage> MontageClimbUp;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Паркур|Анимации") TObjectPtr<UAnimMontage> MontageVault;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Паркур|Анимации") TObjectPtr<UAnimMontage> MontageRoll;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Паркур|Анимации") TObjectPtr<UAnimMontage> MontageHardLand;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Паркур|Анимации") TObjectPtr<UAnimMontage> MontageTurn;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Паркур|Анимации") TObjectPtr<UAnimMontage> MontageHangIdle;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Паркур|Анимации") TObjectPtr<UAnimMontage> MontageClimbLoop;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Паркур|Анимации") TObjectPtr<UAnimMontage> MontageShimmyLeft;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Паркур|Анимации") TObjectPtr<UAnimMontage> MontageShimmyRight;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Паркур|Анимации") TObjectPtr<UAnimMontage> MontageWallRun;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Паркур|Анимации") TObjectPtr<UAnimMontage> MontageDropToHang;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Паркур|Анимации") UAnimMontage* MontageClimbUp = nullptr;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Паркур|Анимации") UAnimMontage* MontageVault = nullptr;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Паркур|Анимации") UAnimMontage* MontageRoll = nullptr;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Паркур|Анимации") UAnimMontage* MontageHardLand = nullptr;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Паркур|Анимации") UAnimMontage* MontageTurn = nullptr;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Паркур|Анимации") UAnimMontage* MontageHangIdle = nullptr;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Паркур|Анимации") UAnimMontage* MontageClimbLoop = nullptr;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Паркур|Анимации") UAnimMontage* MontageShimmyLeft = nullptr;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Паркур|Анимации") UAnimMontage* MontageShimmyRight = nullptr;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Паркур|Анимации") UAnimMontage* MontageWallRun = nullptr;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Паркур|Анимации") UAnimMontage* MontageDropToHang = nullptr;
 
 	/** показывать отладочные трассировки */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Паркур") bool bDebugDraw = false;
@@ -103,7 +103,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Паркур|Тайминги") float MantleTime = 0.6f;
 
 	/** забраться с земли на невысокий уступ (~130–180 см), на который можно встать (необязателен) */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Паркур|Анимации") TObjectPtr<UAnimMontage> MontageMantle;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Паркур|Анимации") UAnimMontage* MontageMantle = nullptr;
 
 	/* ---- данные для анимации (UTPTraversalAnimInstance) ---- */
 	/** скорость проигрывания цикла лазания (0 — стоит на стене) */
@@ -119,7 +119,7 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Паркур|Анимация") float GetHandIK(FVector& OutLeft, FVector& OutRight) const;
 
 protected:
-	UPROPERTY(Transient) TObjectPtr<ACharacter> Owner;
+	UPROPERTY(Transient) ACharacter* Owner = nullptr;
 	ETPTraversal State = ETPTraversal::Ground;
 	FTPLedge Ledge;
 	FTPMoveInput Input;

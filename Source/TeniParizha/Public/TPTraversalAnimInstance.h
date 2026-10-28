@@ -1,4 +1,4 @@
-// Тени Парижа — базовый класс анимации героя: переменные паркура для AnimBP (родитель для ABP героя).
+﻿// Тени Парижа — базовый класс анимации героя: переменные паркура для AnimBP (родитель для ABP героя).
 // Владелец модуля: агент «паркур».
 #pragma once
 
@@ -53,8 +53,8 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Паркур") float LeanAngle = 0.f;
 
 protected:
-	UPROPERTY(Transient) TObjectPtr<ACharacter> OwnerCharacter;
-	UPROPERTY(Transient) TObjectPtr<UTPTraversalComponent> Traversal;
+	UPROPERTY(Transient) ACharacter* OwnerCharacter = nullptr;
+	UPROPERTY(Transient) UTPTraversalComponent* Traversal = nullptr;
 
 	void ResolveOwner();
 };

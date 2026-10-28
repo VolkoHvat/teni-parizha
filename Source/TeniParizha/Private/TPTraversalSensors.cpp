@@ -1,8 +1,7 @@
-// Тени Парижа — сенсоры паркура (перенос из legacy/lutece/phys/lu_phys.c, единицы — сантиметры, Z вверх).
+﻿// Тени Парижа — сенсоры паркура (перенос из legacy/lutece/phys/lu_phys.c, единицы — сантиметры, Z вверх).
 #include "TPTraversalSensors.h"
 #include "Engine/World.h"
-#include "Engine/HitResult.h"
-#include "Engine/OverlapResult.h"
+#include "Engine/EngineTypes.h"
 #include "WorldCollision.h"
 #include "CollisionQueryParams.h"
 #include "CollisionShape.h"
@@ -36,22 +35,22 @@ bool FTPTraversalSensors::HasSurfaceTag(const FHitResult& Hit, FName Tag)
 
 void FTPTraversalSensors::DebugPoint(const FVector& P, const FColor& Color, float Size) const
 {
-	if (bDebug && World) DrawDebugSphere(World, P, Size, 8, Color, false, -1.f, 0, 1.f);
+	if (bDebug && World.IsValid()) DrawDebugSphere(World.Get(), P, Size, 8, Color, false, -1.f, 0, 1.f);
 }
 
 void FTPTraversalSensors::DebugLine(const FVector& A, const FVector& B, const FColor& Color) const
 {
-	if (bDebug && World) DrawDebugLine(World, A, B, Color, false, -1.f, 0, 0.6f);
+	if (bDebug && World.IsValid()) DrawDebugLine(World.Get(), A, B, Color, false, -1.f, 0, 0.6f);
 }
 
 /* Одна трассировка с пропуском других персонажей (Pawn): они не должны давать уступов и стен. */
 bool FTPTraversalSensors::Trace(const FVector& A, const FVector& B, FHitResult& Hit) const
 {
-	if (!World) return false;
-	FCollisionQueryParams Params(FName(TEXT("TPTraversal")), false, Self);
+	if (!World.IsValid()) return false;
+	FCollisionQueryParams Params(FName(TEXT("TPTraversal")), false, Self.Get());
 	for (int32 Attempt = 0; Attempt < 4; ++Attempt)
 	{
-		if (!World->LineTraceSingleByChannel(Hit, A, B, ECC_Visibility, Params)) return false;
+		if (!World.Get()->LineTraceSingleByChannel(Hit, A, B, ECC_Visibility, Params)) return false;
 		AActor* HitActor = Hit.GetActor();
 		if (HitActor && HitActor->IsA<APawn>())
 		{
@@ -96,11 +95,11 @@ bool FTPTraversalSensors::Ray(const FVector& From, const FVector& Dir, float Max
 
 bool FTPTraversalSensors::Blocked(const FVector& Center, float Radius, float HalfHeight) const
 {
-	if (!World) return false;
+	if (!World.IsValid()) return false;
 	const FCollisionShape Shape = HalfHeight > Radius ? FCollisionShape::MakeCapsule(Radius, HalfHeight) : FCollisionShape::MakeSphere(Radius);
-	FCollisionQueryParams Params(FName(TEXT("TPTraversalOverlap")), false, Self);
+	FCollisionQueryParams Params(FName(TEXT("TPTraversalOverlap")), false, Self.Get());
 	TArray<FOverlapResult> Overlaps;
-	World->OverlapMultiByChannel(Overlaps, Center, FQuat::Identity, ECC_Visibility, Shape, Params);
+	World.Get()->OverlapMultiByChannel(Overlaps, Center, FQuat::Identity, ECC_Visibility, Shape, Params);
 	bool bBlocked = false;
 	for (const FOverlapResult& O : Overlaps)
 	{
@@ -112,7 +111,7 @@ bool FTPTraversalSensors::Blocked(const FVector& Center, float Radius, float Hal
 	}
 	if (bDebug && Radius > 10.f)
 	{
-		DrawDebugCapsule(World, Center, FMath::Max(HalfHeight, Radius), Radius, FQuat::Identity, bBlocked ? FColor::Red : FColor::Cyan, false, -1.f, 0, 0.6f);
+		DrawDebugCapsule(World.Get(), Center, FMath::Max(HalfHeight, Radius), Radius, FQuat::Identity, bBlocked ? FColor::Red : FColor::Cyan, false, -1.f, 0, 0.6f);
 	}
 	return bBlocked;
 }
@@ -124,7 +123,7 @@ float FTPTraversalSensors::ProbeWall(const FVector& Feet, const FVector& Dir, fl
 	if (D.IsNearlyZero()) return -1.f;
 	FTPSensorHit H;
 	if (!Ray(Feet + FVector(0.f, 0.f, Height), D, MaxDist, H)) return -1.f;
-	if (FMath::Abs(H.Normal.Z) > 0.5) return -1.f;          // не стена (пол, скат, потолок)
+	if (FMath::Abs(H.Normal.Z) > 0.5f) return -1.f;          // не стена (пол, скат, потолок)
 	if (OutNormal) *OutNormal = FVector(H.Normal.X, H.Normal.Y, 0.f).GetSafeNormal();
 	if (bOutNoClimb) *bOutNoClimb = H.bNoClimb;
 	return H.Distance;
@@ -144,7 +143,7 @@ float FTPTraversalSensors::FloorAt(const FVector& P, float Up, float Down, bool*
 bool FTPTraversalSensors::FindLedge(const FVector& Feet, const FVector& Dir, float HMin, float HMax, float Reach, FTPLedge& Out) const
 {
 	Out = FTPLedge();
-	if (!World) return false;
+	if (!World.IsValid()) return false;
 	const FVector D = FVector(Dir.X, Dir.Y, 0.f).GetSafeNormal();
 	if (D.IsNearlyZero()) return false;
 	const float FeetZ = static_cast<float>(Feet.Z);
@@ -164,7 +163,7 @@ bool FTPTraversalSensors::FindLedge(const FVector& Feet, const FVector& Dir, flo
 		// передняя грань: горизонтальный луч чуть ниже кромки, из-за спины персонажа
 		const FVector St = FVector(Feet.X, Feet.Y, TopZ - 7.f) - D * 30.f;
 		FTPSensorHit Face;
-		if (!Ray(St, D, S + 60.f, Face) || FMath::Abs(Face.Normal.Z) > 0.5) continue;
+		if (!Ray(St, D, S + 60.f, Face) || FMath::Abs(Face.Normal.Z) > 0.5f) continue;
 		if (Face.Distance <= 0.f) continue;                     // луч начался внутри геометрии
 		if (Face.Distance - 30.f > Reach) continue;
 		if (Face.bNoClimb || Top.bNoClimb) return false;        // за эту кромку хвататься нельзя
@@ -245,15 +244,15 @@ bool FTPTraversalSensors::LedgeContinues(const FTPLedge& L, float Side, float Di
 	const FVector P = L.Edge + L.EdgeDir * (Side * Dist);
 	const FVector Feet = FVector(P.X, P.Y, L.Edge.Z - L.Height) + L.WallNormal * 50.f;
 	if (!FindLedge(Feet, -L.WallNormal, L.Height - 35.f, L.Height + 35.f, 90.f, Out)) return false;
-	return FMath::Abs(Out.Edge.Z - L.Edge.Z) < 30.0;
+	return FMath::Abs(Out.Edge.Z - L.Edge.Z) < 30.f;
 }
 
 bool FTPTraversalSensors::IsSoftAt(const FVector& Feet, float Radius) const
 {
-	if (!World) return false;
-	FCollisionQueryParams Params(FName(TEXT("TPTraversalSoft")), false, Self);
+	if (!World.IsValid()) return false;
+	FCollisionQueryParams Params(FName(TEXT("TPTraversalSoft")), false, Self.Get());
 	TArray<FOverlapResult> Overlaps;
-	World->OverlapMultiByObjectType(Overlaps, Feet + FVector(0.f, 0.f, 20.f), FQuat::Identity,
+	World.Get()->OverlapMultiByObjectType(Overlaps, Feet + FVector(0.f, 0.f, 20.f), FQuat::Identity,
 		FCollisionObjectQueryParams(FCollisionObjectQueryParams::AllObjects), FCollisionShape::MakeSphere(Radius), Params);
 	for (const FOverlapResult& O : Overlaps)
 	{

@@ -1,4 +1,4 @@
-// Тени Парижа — свободный бег (паркур) в духе Assassin's Creed.
+﻿// Тени Парижа — свободный бег (паркур) в духе Assassin's Creed.
 // Перенос автомата состояний из legacy/lutece/game/lu_traversal.c (метры, Y вверх → сантиметры, Z вверх, вперёд +X).
 // На земле и в полёте физику ведёт CharacterMovement (компонент задаёт скорость, ввод и толчки);
 // в висе, лазании и кинематических действиях (перемах, подтягивание, перескок, спуск) — MOVE_Flying
@@ -56,9 +56,9 @@ namespace
 		const float Zu = TrSmooth01(U / FMath::Max(ZEnd, 0.05f));
 		const float Xu = TrSmooth01((U - XStart) / FMath::Max(1.f - XStart, 0.05f));
 		FVector P;
-		P.X = FMath::Lerp(From.X, To.X, static_cast<double>(Xu));
-		P.Y = FMath::Lerp(From.Y, To.Y, static_cast<double>(Xu));
-		P.Z = FMath::Lerp(From.Z, To.Z, static_cast<double>(Zu)) + static_cast<double>(Bump * FMath::Sin(UE_PI * U));
+		P.X = FMath::Lerp(From.X, To.X, Xu);
+		P.Y = FMath::Lerp(From.Y, To.Y, Xu);
+		P.Z = FMath::Lerp(From.Z, To.Z, Zu) + Bump * FMath::Sin(PI * U);
 		return P;
 	}
 
@@ -89,7 +89,7 @@ void UTPTraversalComponent::BeginPlay()
 		return;
 	}
 	// порядок кадра: персонаж (SetInput) → паркур → CharacterMovement
-	AddTickPrerequisiteActor(Owner.Get());
+	AddTickPrerequisiteActor(Owner);
 	if (UCharacterMovementComponent* M = GetMove())
 	{
 		M->AddTickPrerequisiteComponent(this);
@@ -178,7 +178,7 @@ void UTPTraversalComponent::TickComponent(float DeltaTime, ELevelTick TickType, 
 		CapsuleRadius = Cap->GetScaledCapsuleRadius();
 		CapsuleHalfHeight = Cap->GetScaledCapsuleHalfHeight();
 	}
-	Sensors.Setup(GetWorld(), Owner.Get(), bDebugDraw);
+	Sensors.Setup(GetWorld(), Owner, bDebugDraw);
 
 	switch (State)
 	{
@@ -383,7 +383,7 @@ void UTPTraversalComponent::UpdateAir(float Dt)
 
 	// управление в воздухе (AirControl персонажа)
 	const FVector Move2D = TrFlat(Input.Move);
-	if (Move2D.SizeSquared() > 0.0025)
+	if (Move2D.SizeSquared() > 0.0025f)
 	{
 		Owner->AddMovementInput(Move2D);
 	}
@@ -397,7 +397,7 @@ void UTPTraversalComponent::UpdateAir(float Dt)
 	}
 
 	// хватка за уступ
-	if (bLedgeGrab && bLeftGround && M->Velocity.Z < 150.0 && StateTime > 0.12f && !Input.bDrop)
+	if (bLedgeGrab && bLeftGround && M->Velocity.Z < 150.0f && StateTime > 0.12f && !Input.bDrop)
 	{
 		const float HFE = HangCenterBelowEdge + CapsuleHalfHeight;
 		FTPLedge L;
@@ -409,9 +409,9 @@ void UTPTraversalComponent::UpdateAir(float Dt)
 		// влетел в стену на свободном бегу — зацепиться и лезть
 		FVector WN;
 		bool bNoClimb = false;
-		if (Input.bSprint && M->Velocity.Z < 0.0 &&
+		if (Input.bSprint && M->Velocity.Z < 0.0f &&
 			Sensors.ProbeWall(Feet, Fwd, 120.f, CapsuleRadius + 12.f, &WN, &bNoClimb) >= 0.f && !bNoClimb &&
-			FVector::DotProduct(WN, Fwd) < -0.6)
+			FVector::DotProduct(WN, Fwd) < -0.6f)
 		{
 			EnterClimb(WN);
 			return;
@@ -490,7 +490,7 @@ void UTPTraversalComponent::UpdateLand(float Dt)
 	UCharacterMovementComponent* M = GetMove();
 	if (M->IsFalling()) { EnterAir(M->Velocity); return; }
 	// ввод не подаём — CharacterMovement тормозит сам
-	const bool bMoving = TrFlat(Input.Move).SizeSquared() > 0.04;
+	const bool bMoving = TrFlat(Input.Move).SizeSquared() > 0.04f;
 	if (StateTime > StateDuration * (bMoving ? 0.55f : 0.95f))
 	{
 		EnterGround();
@@ -798,8 +798,8 @@ void UTPTraversalComponent::UpdateVault(float Dt)
 	else
 	{
 		// перемах: плавно вперёд по дуге над препятствием
-		P = FMath::Lerp(ActFrom, ActTo, static_cast<double>(TrSmooth01(U)));
-		P.Z += ActArc * FMath::Sin(UE_PI * U);
+		P = FMath::Lerp(ActFrom, ActTo, TrSmooth01(U));
+		P.Z += ActArc * FMath::Sin(PI * U);
 	}
 	PlaceActor(P, FQuat::Slerp(ActFromRot, ActToRot, TrSmooth01(U / 0.3f)));
 	if (U >= 1.f)
@@ -827,9 +827,9 @@ void UTPTraversalComponent::UpdateDrop(float Dt)
 	const float Xu = TrSmooth01(U / 0.5f);
 	const float Zu = TrSmooth01((U - 0.25f) / 0.75f);
 	FVector P;
-	P.X = FMath::Lerp(ActFrom.X, ActTo.X, static_cast<double>(Xu));
-	P.Y = FMath::Lerp(ActFrom.Y, ActTo.Y, static_cast<double>(Xu));
-	P.Z = FMath::Lerp(ActFrom.Z, ActTo.Z, static_cast<double>(Zu));
+	P.X = FMath::Lerp(ActFrom.X, ActTo.X, Xu);
+	P.Y = FMath::Lerp(ActFrom.Y, ActTo.Y, Xu);
+	P.Z = FMath::Lerp(ActFrom.Z, ActTo.Z, Zu);
 	PlaceActor(P, FQuat::Slerp(ActFromRot, ActToRot, TrSmooth01(U / 0.6f)));
 	if (U >= 1.f)
 	{
@@ -841,8 +841,8 @@ void UTPTraversalComponent::UpdateHop(float Dt)
 {
 	const float U = FMath::Clamp(StateTime / FMath::Max(ActDur, 0.05f), 0.f, 1.f);
 	const float E = TrSmooth01(U);
-	FVector P = FMath::Lerp(ActFrom, ActTo, static_cast<double>(E));
-	P.Z += 25.0 * FMath::Sin(UE_PI * U);
+	FVector P = FMath::Lerp(ActFrom, ActTo, E);
+	P.Z += 25.f * FMath::Sin(PI * U);
 	PlaceActor(P, FQuat::Slerp(ActFromRot, ActToRot, E));
 	ClimbAnimRate = 1.4f;
 	if (U >= 1.f)
@@ -958,7 +958,7 @@ bool UTPTraversalComponent::TryStartVault(const FVector& Dir, float Reach)
 		ToFeet = L.Edge + Into * 50.f;
 		const float FY = Sensors.FloorAt(ToFeet, 60.f, 60.f);
 		ToFeet.Z = TrHasFloor(FY) ? FY : TopZ;
-		bActKeepSpeed = TrFlat(Input.Move).SizeSquared() > 0.09;
+		bActKeepSpeed = TrFlat(Input.Move).SizeSquared() > 0.09f;
 		bActMount = true;
 		ActZEnd = 0.6f;
 		ActXStart = 0.3f;
@@ -1029,7 +1029,7 @@ bool UTPTraversalComponent::TryLateralHop(float Side)
 		const FVector Feet = FVector(P.X, P.Y, Ledge.Edge.Z - HFE) + WN * 50.f;
 		FTPLedge L2;
 		if (Sensors.FindLedge(Feet, -WN, HFE - 70.f, HFE + 70.f, 100.f, L2) &&
-			FVector::DotProduct(L2.WallNormal, WN) > 0.5)
+			FVector::DotProduct(L2.WallNormal, WN) > 0.5f)
 		{
 			StartHop(L2, HopTime * 0.8f);
 			return true;
@@ -1117,7 +1117,7 @@ bool UTPTraversalComponent::EnsureCapsuleFree()
 	FVector Spot = C;
 	if (UWorld* W = GetWorld())
 	{
-		if (W->FindTeleportSpot(Owner.Get(), Spot, Owner->GetActorRotation()))
+		if (W->FindTeleportSpot(Owner, Spot, Owner->GetActorRotation()))
 		{
 			Owner->SetActorLocation(Spot);
 			return true;
@@ -1149,7 +1149,7 @@ void UTPTraversalComponent::StopLoops(float BlendOut)
 	if (!Owner || !Owner->GetMesh()) return;
 	UAnimInstance* AI = Owner->GetMesh()->GetAnimInstance();
 	if (!AI) return;
-	UAnimMontage* Loops[] = { MontageHangIdle.Get(), MontageClimbLoop.Get(), MontageShimmyLeft.Get(), MontageShimmyRight.Get(), MontageWallRun.Get() };
+	UAnimMontage* Loops[] = { MontageHangIdle, MontageClimbLoop, MontageShimmyLeft, MontageShimmyRight, MontageWallRun };
 	for (UAnimMontage* Mtg : Loops)
 	{
 		if (Mtg && AI->Montage_IsPlaying(Mtg))

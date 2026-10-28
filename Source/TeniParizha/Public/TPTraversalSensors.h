@@ -1,4 +1,4 @@
-// Тени Парижа — сенсоры паркура: поиск стен, уступов, карнизов и препятствий трассировками по любой геометрии.
+﻿// Тени Парижа — сенсоры паркура: поиск стен, уступов, карнизов и препятствий трассировками по любой геометрии.
 // Владелец модуля: агент «паркур». Перенос lu_probe_wall / lu_find_ledge / lu_find_grab / lu_find_vault /
 // lu_ledge_continues из legacy/lutece/phys/lu_phys.c (метры, Y вверх → сантиметры, Z вверх).
 #pragma once
@@ -80,7 +80,8 @@ public:
 private:
 	bool Trace(const FVector& A, const FVector& B, FHitResult& Hit) const;
 
-	UWorld* World = nullptr;
-	const AActor* Self = nullptr;
+	// слабые ссылки: структура не отражается, сборщик мусора её не видит
+	TWeakObjectPtr<UWorld> World;
+	TWeakObjectPtr<const AActor> Self;
 	bool bDebug = false;
 };

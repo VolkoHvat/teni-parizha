@@ -1,4 +1,4 @@
-// Тени Парижа — стражник: патруль по улицам, зрение (конус и проверка видимости), тревога,
+﻿// Тени Парижа — стражник: патруль по улицам, зрение (конус и проверка видимости), тревога,
 // погоня, поиск, ближний бой по жетону (UTPCombatDirector), мушкетёры, оглушение с рэгдоллом.
 // Владелец модуля: агент «бой и стража». Логика перенесена из legacy/teni_v1/game2/game.c (npcs_update, ветка «стражник»).
 #pragma once
@@ -33,12 +33,12 @@ public:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void Tick(float DeltaSeconds) override;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Бой") TObjectPtr<UTPCombatComponent> Combat;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Бой") UTPCombatComponent* Combat = nullptr;
 	/** треуголка: поля (сплющенный цилиндр) и тулья (низкий конус), на сокете head */
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Внешность") TObjectPtr<UStaticMeshComponent> HatBrim;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Внешность") TObjectPtr<UStaticMeshComponent> HatCrown;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Внешность") UStaticMeshComponent* HatBrim = nullptr;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Внешность") UStaticMeshComponent* HatCrown = nullptr;
 	/** мушкет за спиной (только у мушкетёров) */
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Внешность") TObjectPtr<UStaticMeshComponent> Musket;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Внешность") UStaticMeshComponent* Musket = nullptr;
 
 	/* ---- для интерфейса ---- */
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Стража") ETPGuardState State = ETPGuardState::Patrol;
