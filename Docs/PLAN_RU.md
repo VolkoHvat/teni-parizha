@@ -38,7 +38,7 @@
 5. [x] **Анимация, часть 1.** `TPAnimPoseMath.h`: двухзвенный IK с pole-вектором, позы целями конечностей, переходы (порт `legacy/lutece/anim/lu_humanoid.c`).
    - Тест в `Tools/AnimTest`: нет NaN, длины костей сохраняются, колени и локти сгибаются в нужную сторону, нет скачков между кадрами.
    - PNG-листы поз на скелете манекена.
-6. [ ] **Анимация, часть 2.** `UTPAnimInstance` и свой `FAnimInstanceProxy` (Evaluate):
+6. [~] **Анимация, часть 2.** `UTPAnimInstance` и свой `FAnimInstanceProxy` (Evaluate):
    - локомоция из анимаций манекена UE4 со смешиванием по скорости;
    - процедурная походка как запасной вариант;
    - `TPAnimSetup` (оптимизация NPC: OnlyTickPoseWhenRendered, редкое обновление дальних).
