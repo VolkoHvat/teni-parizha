@@ -23,6 +23,9 @@ static void limb(v3 a, v3 b, float r, lu_material *m) {
     lu_draw(&sph, m, 1, m4_trs(b, Q_ID(), V3(r, r, r)));
 }
 static int wall_pose(const char *n) { return !strcmp(n, "hang") || !strcmp(n, "brace") || !strcmp(n, "climb"); }
+/* сцена действия: имя вида «ClimbUp:wall» — стена/уступ/забор в мировых осях дампа (UE: стена — плоскость X = 40 см) */
+static const char *scene_tag(const char *n) { const char *c = strchr(n, ':'); return c ? c + 1 : ""; }
+static int ANY_TAG;
 
 int main(int argc, char **argv) {
     if (argc < 4) { printf("render_sheet poses.txt out.ppm side|34\n"); return 1; }
@@ -32,8 +35,9 @@ int main(int argc, char **argv) {
         NF++;
     }
     fclose(fi);
+    for (int f = 0; f < NF; f++) if (strchr(F[f].name, ':')) ANY_TAG = 1;
     int side = !strcmp(argv[3], "side");
-    const int W = 2400, H = 1500, COLS = 13; const float SP = 1.25f, ROWH = 3.1f;
+    const int W = 2400, H = 1500, COLS = ANY_TAG ? 11 : 13; const float SP = ANY_TAG && side ? 1.9f : 1.25f, ROWH = 3.1f;
     lu_window_desc wd = {"sheet", W, H, 0, 0, 0};
     if (lu_platform_init(&wd)) return 3;
     if (lu_gfx_init()) { printf("ошибка: %s\n", lu_gfx_error()); return 4; }
@@ -56,7 +60,8 @@ int main(int argc, char **argv) {
     }
     float cx = 0, cy = -ROWH * ((NF - 1) / COLS) * .5f + 1.f;
     lu_camera cam;
-    if (side) { cam = (lu_camera){V3(-60, cy + 2, 0), V3(0, cy, 0), V3(0, 1, 0), .19f, 1, 300}; }
+    if (side) { float d = ANY_TAG ? 80.f : 60.f; cam = (lu_camera){V3(-d, cy + 2, ANY_TAG ? .5f : 0), V3(0, cy, ANY_TAG ? .5f : 0), V3(0, 1, 0), .19f, 1, 300}; }
+    else if (ANY_TAG) { cam = (lu_camera){V3(-46, cy + 16, 48), V3(cx, cy + .3f, 0), V3(0, 1, 0), .22f, 1, 300}; }
     else { cam = (lu_camera){V3(-40, cy + 14, 42), V3(cx, cy, 0), V3(0, 1, 0), .20f, 1, 300}; }
     for (int pass = 0; pass < 2; pass++) {
         lu_gfx_begin(W, H, lu_platform_fbo()); lu_gfx_camera(&cam); lu_gfx_env(&e);
@@ -65,6 +70,13 @@ int main(int argc, char **argv) {
             for (int i = 0; i < NB; i++) P[i] = v3_add(J[i], o);
             /* пол-плитка; у виса и лазания — стена 0.32 м впереди с уступом на 2.05 м */
             lu_draw(&box, &mG, 1, m4_trs(v3_add(o, V3(0, -.02f, .1f)), Q_ID(), V3(1.f, .04f, 1.1f)));
+            {
+                const char *tg = scene_tag(F[f].name);
+                if (side && (!strcmp(tg, "wall") || !strcmp(tg, "wall2"))) lu_draw(&box, &mW, 1, m4_trs(v3_add(o, V3(0, 1.035f, .40f + .3f)), Q_ID(), V3(1.f, 2.07f, .6f)));
+                if (side && !strcmp(tg, "low")) lu_draw(&box, &mW, 1, m4_trs(v3_add(o, V3(0, .75f, .40f + .3f)), Q_ID(), V3(1.f, 1.5f, .6f)));
+                if (side && !strcmp(tg, "fence")) lu_draw(&box, &mW, 1, m4_trs(v3_add(o, V3(0, .5f, .475f)), Q_ID(), V3(1.f, 1.f, .15f)));
+                if (side && !strcmp(tg, "wallrun")) lu_draw(&box, &mW, 1, m4_trs(v3_add(o, V3(0, 1.3f, .45f + .2f)), Q_ID(), V3(1.f, 2.6f, .4f)));
+            }
             if (side && wall_pose(F[f].name)) lu_draw(&box, &mW, 1, m4_trs(v3_add(o, V3(0, 1.0f, .32f + .3f)), Q_ID(), V3(1.f, 2.04f, .6f)));
             for (int i = 1; i < NB; i++) {
                 int p = PAR[i]; if (p <= 0) continue;

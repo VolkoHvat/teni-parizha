@@ -117,6 +117,24 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Паркур") float GetLastFallHeight() const { return LastFallHeight; }
 	/** мировые точки рук на кромке/стене; возвращает вес IK 0..1 */
 	UFUNCTION(BlueprintPure, Category = "Паркур|Анимация") float GetHandIK(FVector& OutLeft, FVector& OutRight) const;
+	/** время в текущем состоянии, с (агент «анимация», этап 7) */
+	UFUNCTION(BlueprintPure, Category = "Паркур|Анимация") float GetStateTime() const { return StateTime; }
+	/** доля выполнения действия 0..1: перемах, подтягивание, спуск в вис, перескок — по ActDur; приземление, кувырок,
+	 *  разворот — по StateDuration; у остальных состояний 0 */
+	UFUNCTION(BlueprintPure, Category = "Паркур|Анимация") float GetActionProgress() const
+	{
+		switch (State)
+		{
+		case ETPTraversal::Vault: case ETPTraversal::ClimbUp: case ETPTraversal::Drop: case ETPTraversal::Hop:
+			return FMath::Clamp(StateTime / FMath::Max(ActDur, 0.05f), 0.f, 1.f);
+		case ETPTraversal::Land: case ETPTraversal::Roll: case ETPTraversal::Turn:
+			return FMath::Clamp(StateTime / FMath::Max(StateDuration, 0.05f), 0.f, 1.f);
+		default:
+			return 0.f;
+		}
+	}
+	/** подтягивание началось из виса (иначе — заскок на низкий уступ с земли) */
+	UFUNCTION(BlueprintPure, Category = "Паркур|Анимация") bool IsActionFromHang() const { return bActFromHang; }
 
 protected:
 	UPROPERTY(Transient) ACharacter* Owner = nullptr;

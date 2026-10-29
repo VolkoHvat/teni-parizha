@@ -727,8 +727,9 @@ namespace TPAnim
 				P.Foot[S] = FootAt(R, Sg * .15f, 0.f, S ? -.08f : .1f);
 				P.FootYaw[S] = -Sg * .15f;
 				// жёсткое приземление: ладони к земле; в Lutèce IK включался скачком при c > 0.5 — здесь плавно по фазе
-				P.HandIK[S] = Hard * Smooth01((U - .03f) / .2f) * Smooth01((.98f - U) / .2f);
-				P.Hand[S] = LU(R, Sg * .25f, .05f + .3f * (1.f - C), .35f);
+				P.HandIK[S] = Hard * Smooth01((U - .03f) / .2f) * Smooth01((.8f - U) / .25f);
+				// ладони у земли (в Lutèce 5 см над полом — недосягаемо при этом приседе, кисть зависала на 14 см выше цели)
+				P.Hand[S] = LU(R, Sg * .25f, .16f + .3f * (1.f - C), .28f);
 				P.ElbowPole[S] = LU(R, Sg * 1.f, .8f, -.3f);
 				P.ArmOut[S] = 1.f; P.ArmSwing[S] = .5f * C; P.Elbow[S] = .6f;
 			}
