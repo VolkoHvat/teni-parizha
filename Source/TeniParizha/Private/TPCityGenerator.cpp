@@ -10,6 +10,10 @@
 #include "TPCityBuilder.h"
 #include "TPTexGen.h"
 #include "ProceduralMeshComponent.h"
+#include "Components/HierarchicalInstancedStaticMeshComponent.h"
+#include "Engine/StaticMesh.h"
+#include "MeshDescription.h"
+#include "StaticMeshAttributes.h"
 #include "Components/SceneComponent.h"
 #include "Engine/World.h"
 #include "Engine/CollisionProfile.h"
@@ -311,6 +315,122 @@ namespace TPCityGenImpl
 		Comp->SetMeshSectionVisible(Section, false);
 	}
 
+	/**
+	 * UStaticMesh модуля из локальных буферов (секция на материал). Цвет вершин: сборка статического меша переводит
+	 * атрибут в байты через ToFColor(sRGB), а шейдер читает байты как есть — поэтому кладём FLinearColor(FColor(b)),
+	 * где b — байт того же линейного множителя, что получает процедурный меш (pow(c, 2.2)). nullptr — не построился.
+	 */
+	static UStaticMesh* BuildModuleMesh(UObject* Outer, const TPCity::FModule& Md, int32 Index, const TArray<UMaterialInterface*>& Mats)
+	{
+		FMeshDescription MD;
+		FStaticMeshAttributes Attr(MD);
+		Attr.Register();
+		TVertexAttributesRef<FVector> Positions = Attr.GetVertexPositions();
+		TVertexInstanceAttributesRef<FVector> Normals = Attr.GetVertexInstanceNormals();
+		TVertexInstanceAttributesRef<FVector> Tangents = Attr.GetVertexInstanceTangents();
+		TVertexInstanceAttributesRef<float> Signs = Attr.GetVertexInstanceBinormalSigns();
+		TVertexInstanceAttributesRef<FVector4> Colors = Attr.GetVertexInstanceColors();
+		TVertexInstanceAttributesRef<FVector2D> UVs = Attr.GetVertexInstanceUVs();
+		TPolygonGroupAttributesRef<FName> Slots = Attr.GetPolygonGroupMaterialSlotNames();
+
+		const FName MeshName = MakeUniqueObjectName(Outer, UStaticMesh::StaticClass(), FName(*FString::Printf(TEXT("SM_TPCityModule_%d"), Index)));
+		UStaticMesh* SM = NewObject<UStaticMesh>(Outer, MeshName, RF_Transient);
+		if (!SM) return nullptr;
+		const FSrgbToLinear& L = SrgbTable();
+		TArray<FVertexInstanceID> Inst;
+		TArray<FVertexInstanceID> Tri;
+		for (int32 Mi = 0; Mi < Md.Bufs.Num(); ++Mi)
+		{
+			const TPCity::FMeshBuf& M = Md.Bufs[Mi];
+			if (M.IsEmpty()) continue;
+			const FName Slot(*FString::Printf(TEXT("Mat%02d"), Mi));
+			const FPolygonGroupID Group = MD.CreatePolygonGroup();
+			Slots[Group] = Slot;
+			SM->StaticMaterials.Add(FStaticMaterial(Mats.IsValidIndex(Mi) ? Mats[Mi] : nullptr, Slot, Slot));
+
+			const int32 NV = M.Pos.Num();
+			TArray<FVector> V, N;
+			TArray<FVector2D> UV;
+			TArray<FProcMeshTangent> Tan;
+			V.SetNumUninitialized(NV);
+			N.SetNumUninitialized(NV);
+			UV.SetNumUninitialized(NV);
+			for (int32 I = 0; I < NV; ++I)
+			{
+				V[I] = ToUE(M.Pos[I]);
+				N[I] = ToUEDir(M.Nrm[I]);
+				UV[I] = FVector2D(M.UV[I].X, M.UV[I].Y);
+			}
+			ComputeTangents(V, N, UV, M.Idx, Tan);
+			MD.ReserveNewVertices(NV);
+			MD.ReserveNewVertexInstances(NV);
+			Inst.Reset(NV);
+			for (int32 I = 0; I < NV; ++I)
+			{
+				const FVertexID Vx = MD.CreateVertex();
+				Positions[Vx] = V[I];
+				const FVertexInstanceID VI = MD.CreateVertexInstance(Vx);
+				Normals[VI] = N[I];
+				Tangents[VI] = Tan[I].TangentX;
+				Signs[VI] = Tan[I].bFlipTangentY ? -1.f : 1.f;
+				UVs.Set(VI, 0, UV[I]);
+				const FColor& C = M.Col[I];
+				const FColor Lin((uint8)FMath::RoundToInt(L.V[C.R] * 255.f), (uint8)FMath::RoundToInt(L.V[C.G] * 255.f), (uint8)FMath::RoundToInt(L.V[C.B] * 255.f), C.A);
+				Colors[VI] = FVector4(FLinearColor(Lin));
+				Inst.Add(VI);
+			}
+			// треугольники (порядок индексов — как у процедурного меша: лицевые остаются лицевыми)
+			for (int32 K = 0; K + 2 < M.Idx.Num(); K += 3)
+			{
+				Tri.Reset(3);
+				Tri.Add(Inst[M.Idx[K]]);
+				Tri.Add(Inst[M.Idx[K + 1]]);
+				Tri.Add(Inst[M.Idx[K + 2]]);
+				MD.CreatePolygon(Group, Tri);
+			}
+		}
+		if (SM->StaticMaterials.Num() == 0) return nullptr;
+		TArray<const FMeshDescription*> Descs;
+		Descs.Add(&MD);
+		SM->BuildFromMeshDescriptions(Descs);
+		if (!SM->HasValidRenderData())
+		{
+			UE_LOG(LogTeni, Warning, TEXT("Город: модуль %d не собрался в UStaticMesh — переносится в процедурный меш"), Index);
+			return nullptr;
+		}
+		return SM;
+	}
+
+	/** компонент экземпляров модуля: без столкновений, отсечение и тени — по классу модуля */
+	static UHierarchicalInstancedStaticMeshComponent* NewModuleComponent(AActor* Owner, USceneComponent* Parent, UStaticMesh* Mesh, const TPCity::FModule& Md, int32 Index)
+	{
+		const FName Name = MakeUniqueObjectName(Owner, UHierarchicalInstancedStaticMeshComponent::StaticClass(), FName(*FString::Printf(TEXT("CityModule_%d"), Index)));
+		UHierarchicalInstancedStaticMeshComponent* Comp = NewObject<UHierarchicalInstancedStaticMeshComponent>(Owner, Name, RF_Transient);
+		Comp->SetMobility(EComponentMobility::Static);
+		Comp->SetStaticMesh(Mesh);
+		Comp->SetCollisionProfileName(UCollisionProfile::NoCollision_ProfileName);
+		Comp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		Comp->SetGenerateOverlapEvents(false);
+		Comp->SetCanEverAffectNavigation(false);
+		Comp->SetCastShadow(Md.Cull == TPCity::EModCull::Large);
+		const TPCity::FModCullDist D = TPCity::GetModCullDist(Md.Cull);
+		Comp->SetCullDistances(FMath::RoundToInt(D.Start * 100.f), FMath::RoundToInt(D.End * 100.f));
+		Comp->ComponentTags.Add(ATPCityGenerator::TagCityChunk);
+		Comp->SetupAttachment(Parent);
+		Comp->RegisterComponent();
+		// экземпляры — в осях компонента (= актора): Lutèce (R, вверх, Cross(R, Up)) → UE (R', Z, Y') — поворот вокруг Z
+		TArray<FTransform> Xs;
+		Xs.Reserve(Md.Inst.Num());
+		for (const TPCity::FModInstance& In : Md.Inst)
+		{
+			const FVector R = ToUEDir(In.R);
+			const float Yaw = FMath::RadiansToDegrees(FMath::Atan2(R.Y, R.X));
+			Xs.Add(FTransform(FRotator(0.f, Yaw, 0.f), ToUE(In.Pos)));
+		}
+		Comp->AddInstances(Xs, false);
+		return Comp;
+	}
+
 	/** новый компонент квартала (не сохраняется в уровень: всё строится заново при загрузке/старте) */
 	static UProceduralMeshComponent* NewCityComponent(AActor* Owner, const TCHAR* BaseName, FName Profile)
 	{
@@ -375,8 +495,8 @@ bool ATPCityGenerator::HasCity() const
 void ATPCityGenerator::ClearCity()
 {
 	// все компоненты квартала, в т. ч. оставшиеся от прошлых генераций или скопированные вместе с актором
-	TInlineComponentArray<UProceduralMeshComponent*> Comps(this);
-	for (UProceduralMeshComponent* C : Comps)
+	TInlineComponentArray<UActorComponent*> Comps(this);
+	for (UActorComponent* C : Comps)
 	{
 		if (IsValid(C) && C->ComponentHasTag(TagCityChunk)) C->DestroyComponent();
 	}
@@ -384,9 +504,18 @@ void ATPCityGenerator::ClearCity()
 	{
 		if (IsValid(C)) C->DestroyComponent();
 	}
+	for (UHierarchicalInstancedStaticMeshComponent* C : ModuleComps)
+	{
+		if (IsValid(C)) C->DestroyComponent();
+	}
 	Chunks.Reset();
+	ModuleComps.Reset();
+	ModuleMeshes.Reset();
 	NumTriangles = 0;
 	NumBuildings = 0;
+	NumDrawSections = 0;
+	NumModules = 0;
+	NumInstances = 0;
 	GeneratedSeed = MIN_int32;
 	GeneratedTexSize = 0;
 }
@@ -408,7 +537,22 @@ void ATPCityGenerator::Generate()
 	GetMaterials(TexN, Mats);
 	const double T2 = FPlatformTime::Seconds();
 
-	// 3. ячейки: секция на материал + невидимая секция столкновений
+	// 3. модули: UStaticMesh (не построился или экземпляры выключены — переносим в ячейки до их выгрузки)
+	NumTriangles = B.CountTriangles();
+	TArray<UStaticMesh*> ModMeshes;
+	ModMeshes.SetNumZeroed(B.Modules.Num());
+	for (int32 Mi = 0; Mi < B.Modules.Num(); ++Mi)
+	{
+		const TPCity::FModule& Md = B.Modules[Mi];
+		if (Md.Inst.Num() == 0 || Md.IsEmpty()) continue;
+		UStaticMesh* SM = bUseInstancing ? BuildModuleMesh(this, Md, Mi, Mats) : nullptr;
+		if (SM) ModMeshes[Mi] = SM;
+		else B.BakeModule(Mi);
+	}
+	const TPCity::FCityStats Stats = B.ComputeStats(nullptr);
+	const double T2b = FPlatformTime::Seconds();
+
+	// 4. ячейки: секция на материал + невидимая секция столкновений
 	static const FName ClimbProfile(TEXT("TPClimbable"));
 	const int32 NumChunks = B.CW * B.CH;
 	for (int32 Ci = 0; Ci < NumChunks; ++Ci)
@@ -433,7 +577,7 @@ void ATPCityGenerator::Generate()
 		Chunks.Add(Comp);
 	}
 
-	// 4. мягкие предметы (телеги с сеном) — отдельный компонент с тегом TPSoft
+	// 5. мягкие предметы (телеги с сеном) — отдельный компонент с тегом TPSoft
 	{
 		bool bAny = !B.SoftColl.IsEmpty();
 		for (int32 Mi = 0; Mi < TPCity::CM_Num && !bAny; ++Mi) bAny = !B.SoftBufs[Mi].IsEmpty();
@@ -457,7 +601,15 @@ void ATPCityGenerator::Generate()
 		}
 	}
 
-	// 5. точки для игры (локально, см), затем в мир
+	// 6. экземпляры модулей
+	for (int32 Mi = 0; Mi < B.Modules.Num(); ++Mi)
+	{
+		if (!ModMeshes[Mi] || B.Modules[Mi].Inst.Num() == 0) continue;
+		ModuleMeshes.Add(ModMeshes[Mi]);
+		ModuleComps.Add(NewModuleComponent(this, Root, ModMeshes[Mi], B.Modules[Mi], Mi));
+	}
+
+	// 7. точки для игры (локально, см), затем в мир
 	LocalWalk.Reset(); LocalLamps.Reset(); LocalHay.Reset();
 	for (const TPCity::FV3& P : B.WalkPts) LocalWalk.Add(ToUE(P));
 	for (const TPCity::FV3& P : B.LampPts) LocalLamps.Add(ToUE(P));
@@ -465,13 +617,16 @@ void ATPCityGenerator::Generate()
 	LocalStart = ToUE(B.PlayerStart);
 	UpdateWorldPoints();
 
-	NumTriangles = B.CountTriangles();
 	NumBuildings = B.NumBuildings;
+	NumDrawSections = Stats.DrawCallsVisible();
+	NumModules = Stats.Modules;
+	NumInstances = Stats.Instances;
 	GeneratedSeed = Seed;
 	GeneratedTexSize = TexN;
 	const double T3 = FPlatformTime::Seconds();
-	UE_LOG(LogTeni, Log, TEXT("Город: %d домов, %d треугольников, %d компонентов, %d фонарей, %d точек прогулок; геометрия %.0f мс, материалы %.0f мс, загрузка в меши %.0f мс"),
-		NumBuildings, NumTriangles, Chunks.Num(), LampPoints.Num(), WalkPoints.Num(), (T1 - T0) * 1000.0, (T2 - T1) * 1000.0, (T3 - T2) * 1000.0);
+	UE_LOG(LogTeni, Log, TEXT("Город: %d домов, %d треугольников, %d ячеек, %d модулей (%d экземпляров), секций %d, %d фонарей, %d точек прогулок; геометрия %.0f мс, материалы %.0f мс, модули %.0f мс, загрузка в меши %.0f мс"),
+		NumBuildings, NumTriangles, Chunks.Num(), NumModules, NumInstances, NumDrawSections, LampPoints.Num(), WalkPoints.Num(),
+		(T1 - T0) * 1000.0, (T2 - T1) * 1000.0, (T2b - T2) * 1000.0, (T3 - T2b) * 1000.0);
 }
 
 void ATPCityGenerator::UpdateWorldPoints()

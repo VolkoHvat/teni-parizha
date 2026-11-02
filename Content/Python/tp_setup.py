@@ -151,11 +151,20 @@ def texture_param(mat, name, tex, x, y, uv):
     return node
 
 
+def enable_instancing(mat):
+    """флаг «Used with Instanced Static Meshes»: модули квартала (окна, ставни, трубы…) рисуются через HISM"""
+    try:
+        mat.set_editor_property("used_with_instanced_static_meshes", True)
+    except Exception as e:
+        warn("  не удалось включить использование с HISM: " + str(e))
+
+
 def build_base_material(name, masked, defaults):
     mat, path = get_or_create_material(name)
     P = unreal.MaterialProperty
     mat.set_editor_property("blend_mode", unreal.BlendMode.BLEND_MASKED if masked else unreal.BlendMode.BLEND_OPAQUE)
     mat.set_editor_property("two_sided", bool(masked))
+    enable_instancing(mat)
     if masked:
         mat.set_editor_property("opacity_mask_clip_value", 0.33)
 
@@ -203,6 +212,7 @@ def build_emissive_material(name):
     P = unreal.MaterialProperty
     mat.set_editor_property("blend_mode", unreal.BlendMode.BLEND_OPAQUE)
     mat.set_editor_property("two_sided", False)
+    enable_instancing(mat)
     color = expr(mat, unreal.MaterialExpressionVectorParameter, -700, 0)
     color.set_editor_property("parameter_name", "Color")
     color.set_editor_property("default_value", unreal.LinearColor(1.0, 0.65, 0.3, 1.0))

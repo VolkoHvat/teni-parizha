@@ -275,6 +275,73 @@ int main()
 		printf("квартал: домов %d, треугольников %d\n", B.NumBuildings, B.CountTriangles());
 	}
 
+	// 8. модули (UStaticMesh + HISM): геометрия, экземпляры, перенос в ячейки, бюджет кадра
+	{
+		FBuilder B;
+		B.BuildLevel(1789);
+		EXPECT(B.CaptureErrors == 0, "модули: %d запросов столкновений внутри записи модуля", B.CaptureErrors);
+		const int32 TotalBefore = B.CountTriangles();
+		int32 NInst = 0, BadInst = 0, Empty = 0;
+		int64 ByClass[3] = { 0, 0, 0 };
+		int32 InstByClass[3] = { 0, 0, 0 }, ModByClass[3] = { 0, 0, 0 };
+		for (const FModule& Md : B.Modules)
+		{
+			if (Md.IsEmpty()) { ++Empty; EXPECT(Md.Inst.Num() == 0, "пустой модуль «%s» с экземплярами", Md.Name); continue; }
+			for (int32 Mi = 0; Mi < Md.Bufs.Num(); ++Mi) if (!Md.Bufs[Mi].IsEmpty()) CheckMesh(Md.Bufs[Mi], Md.Name);
+			for (const FModInstance& In : Md.Inst)
+			{
+				++NInst;
+				// ось R горизонтальна и единична; локальная +Z = Cross(R, Up) (поворот без отражения)
+				const FV3 Z = In.LocalDir(FV3(0, 0, 1)), Up(0, 1, 0);
+				const FV3 CrRU = Cr(In.R, Up);
+				if (std::fabs(Ln(In.R) - 1.f) > 1e-4f || std::fabs(In.R.Y) > 1e-6f || Ln(Z - CrRU) > 1e-5f) ++BadInst;
+			}
+			const int32 C = (int32)Md.Cull;
+			ByClass[C] += (int64)Md.NumTris() * Md.Inst.Num();
+			InstByClass[C] += Md.Inst.Num();
+			++ModByClass[C];
+		}
+		EXPECT(BadInst == 0, "модули: %d экземпляров с неверной осью", BadInst);
+		EXPECT(B.Modules.Num() - Empty < 300, "модулей слишком много: %d", B.Modules.Num() - Empty);
+		printf("модули: %d (пустых %d), экземпляров %d; мелочь %d модулей / %d экз. / %lld тр., средние %d / %d / %lld, крупные %d / %d / %lld\n",
+			B.Modules.Num() - Empty, Empty, NInst, ModByClass[0], InstByClass[0], (long long)ByClass[0], ModByClass[1], InstByClass[1], (long long)ByClass[1],
+			ModByClass[2], InstByClass[2], (long long)ByClass[2]);
+		for (const FModule& Md : B.Modules)
+		{
+			if (Md.Inst.Num() >= 60) printf("  «%s»: %d тр. × %d экз.\n", Md.Name, Md.NumTris(), Md.Inst.Num());
+		}
+		// бюджет кадра с разных точек (ячейки — все, без отсечения по пирамиде видимости: оценка сверху)
+		const struct { const char* Name; FV3 Eye; } Eyes[] = {
+			{ "площадь", FV3(60.f, 1.7f, 54.f) }, { "улица", FV3(-10.f, 1.8f, -3.f) }, { "крыша", FV3(20.f, 22.f, 13.f) }, { "над городом", FV3(-25.f, 40.f, -35.f) } };
+		for (const auto& E : Eyes)
+		{
+			const FCityStats St = B.ComputeStats(&E.Eye);
+			printf("  кадр «%s»: треугольников %lld (ячейки %d + модули %lld), вызовов отрисовки %d (ячейки %d + модули %d), с тенью %d секций\n",
+				E.Name, (long long)St.TrisVisible(), St.ChunkTris, (long long)St.ModuleTrisVisible, St.DrawCallsVisible(), St.ChunkSections, St.ModuleSectionsVisible, St.ShadowSections);
+			EXPECT(St.TrisVisible() <= 1500000, "кадр «%s»: %lld треугольников > 1.5 млн", E.Name, (long long)St.TrisVisible());
+			EXPECT(St.DrawCallsVisible() <= 1500, "кадр «%s»: %d вызовов отрисовки > 1500", E.Name, St.DrawCallsVisible());
+		}
+		const FCityStats All = B.ComputeStats(nullptr);
+		printf("  без отсечения: треугольников %lld, вызовов %d\n", (long long)All.TrisVisible(), All.DrawCallsVisible());
+		EXPECT(All.TrisVisible() == (int64)TotalBefore, "счётчики расходятся: %lld и %d", (long long)All.TrisVisible(), TotalBefore);
+		// перенос в ячейки сохраняет число треугольников, ориентацию и нормали
+		B.BakeModules();
+		EXPECT(B.CountTriangles() == TotalBefore, "перенос модулей: было %d треугольников, стало %d", TotalBefore, B.CountTriangles());
+		int32 Bad = 0, Flip = 0;
+		for (const FMeshBuf& M : B.Bufs)
+		{
+			for (int32 I = 0; I < M.Pos.Num(); ++I)
+				if (!std::isfinite(M.Pos[I].X + M.Pos[I].Y + M.Pos[I].Z) || std::fabs(Ln(M.Nrm[I]) - 1.f) > 1e-3f) ++Bad;
+			for (int32 K = 0; K + 2 < M.Idx.Num(); K += 3)
+			{
+				const FV3 A = M.Pos[M.Idx[K]], Bv = M.Pos[M.Idx[K + 1]], C = M.Pos[M.Idx[K + 2]];
+				const FV3 G = Cr(Bv - A, C - A);
+				if (Ln(G) > 1e-6f && Dt(G, M.Nrm[M.Idx[K]]) <= 0.f) ++Flip;   // вырожденные (|G| ~ 1e-7) не считаем
+			}
+		}
+		EXPECT(Bad == 0 && Flip == 0, "перенос модулей: %d плохих вершин, %d вывернутых треугольников", Bad, Flip);
+	}
+
 	printf("проверок %d, ошибок %d\nИТОГ: %s\n", GChecks, GFails, GFails ? "есть ошибки" : "чисто");
 	return GFails ? 1 : 0;
 }

@@ -1,7 +1,7 @@
 // Тени Парижа — сцена для превью фасадов: ряд домов разного стиля вдоль улицы (и угловой дом), выгрузка геометрии
 // построителя квартала в двоичный файл для рендера Lutèce (render_city.c). Координаты Lutèce: метры, Y вверх.
 // Улица — со стороны −Z (фасады домов — сторона 0), угловой дом смотрит ещё и на +X.
-// Запуск: dump_scene out.bin [row|level]
+// Запуск: dump_scene out.bin [row|level|levelcull]
 #include "TPCityElements.h"
 #include <cstdio>
 #include <cstring>
@@ -45,7 +45,8 @@ static void Write(FILE* F, const TArray<FMeshBuf>& Bufs, int32 NumMat)
 int main(int argc, char** argv)
 {
 	if (argc < 2) { printf("dump_scene out.bin [row|level]\n"); return 1; }
-	const bool bLevel = argc > 2 && !strcmp(argv[2], "level");
+	const bool bCull = argc > 2 && !strcmp(argv[2], "levelcull");
+	const bool bLevel = bCull || (argc > 2 && !strcmp(argv[2], "level"));
 	FBuilder B;
 	if (bLevel)
 	{
@@ -82,6 +83,11 @@ int main(int argc, char** argv)
 		}
 		B.Lamp(FV3(6.f, 0.12f, -1.2f)); B.Lamp(FV3(30.f, 0.12f, -1.2f)); B.Lamp(FV3(54.f, 0.12f, -1.2f));
 	}
+	// модули (в игре — UStaticMesh + HISM) переносятся в ячейки; levelcull — с отсечением по расстоянию от камеры вида level
+	const int32 NMods = B.Modules.Num();
+	const FV3 Eye(-25.f, 40.f, -35.f);
+	B.BakeModules(bCull ? &Eye : nullptr);
+	printf("модулей: %d\n", NMods);
 	FILE* F = fopen(argv[1], "wb");
 	if (!F) return 2;
 	Write(F, B.Bufs, CM_Num);

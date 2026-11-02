@@ -5,6 +5,10 @@
 // в каждой ячейке по секции на материал (без столкновений) и одна невидимая секция столкновений из простых коробок
 // (стены домов, карнизы-уступы, балконы, парапеты, скаты крыш) — по ней ходит CharacterMovement и трассирует паркур.
 // Телеги с сеном — отдельный компонент с тегом "TPSoft". Текстуры генерируются на C++ (TPTexGen, порт lu_texgen.c).
+// Повторяющиеся элементы (переплёты, наличники, ставни, решётки, сухарики, слуховые окна, трубы, фонари) — модули:
+// UStaticMesh, построенный в рантайме из FMeshDescription, и по одному UHierarchicalInstancedStaticMeshComponent на модуль
+// (без столкновений; мелочь исчезает на 60–80 м и не отбрасывает тени). Если UStaticMesh не построился — модуль
+// переносится в ячейки процедурного меша, как раньше.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -13,6 +17,8 @@
 
 class UProceduralMeshComponent;
 class UMaterialInterface;
+class UStaticMesh;
+class UHierarchicalInstancedStaticMeshComponent;
 
 UCLASS()
 class TENIPARIZHA_API ATPCityGenerator : public AActor
@@ -45,9 +51,15 @@ public:
 	/** размер процедурных текстур (степень двойки, 128..1024) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Город", meta = (ClampMin = "128", ClampMax = "1024")) int32 TextureSize = 512;
 
-	/** статистика последней генерации */
+	/** модули через UStaticMesh + HISM (иначе всё — в ячейки процедурного меша) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Город") bool bUseInstancing = true;
+
+	/** статистика последней генерации: треугольники всех экземпляров, секции (оценка вызовов отрисовки без отсечения) */
 	UPROPERTY(VisibleInstanceOnly, Transient, Category = "Город") int32 NumTriangles = 0;
 	UPROPERTY(VisibleInstanceOnly, Transient, Category = "Город") int32 NumBuildings = 0;
+	UPROPERTY(VisibleInstanceOnly, Transient, Category = "Город") int32 NumDrawSections = 0;
+	UPROPERTY(VisibleInstanceOnly, Transient, Category = "Город") int32 NumModules = 0;
+	UPROPERTY(VisibleInstanceOnly, Transient, Category = "Город") int32 NumInstances = 0;
 
 	/** имя тега компонентов квартала и тега мягких предметов */
 	static const FName TagCityChunk;
@@ -56,6 +68,8 @@ public:
 protected:
 	UPROPERTY(VisibleAnywhere) USceneComponent* Root = nullptr;
 	UPROPERTY(Transient) TArray<UProceduralMeshComponent*> Chunks;
+	UPROPERTY(Transient) TArray<UHierarchicalInstancedStaticMeshComponent*> ModuleComps;
+	UPROPERTY(Transient) TArray<UStaticMesh*> ModuleMeshes;
 	UPROPERTY() TArray<FVector> WalkPoints;
 	UPROPERTY() TArray<FVector> LampPoints;
 	UPROPERTY() TArray<FVector> HayPoints;

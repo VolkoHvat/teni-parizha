@@ -215,6 +215,9 @@ void FBuilder::Init(float MinX, float MinZ, float MaxX, float MaxZ, float InChun
 	Coll.Reset(); Coll.SetNum(CW * CH);
 	SoftBufs.Reset(); SoftBufs.SetNum(CM_Num);
 	SoftColl = FMeshBuf();
+	Modules.Reset();
+	CaptureMod = -1;
+	CaptureErrors = 0;
 	LampPts.Reset(); HayPts.Reset(); WalkPts.Reset();
 	Solids.Reset(); Flats.Reset();
 	NumBuildings = 0;
@@ -230,12 +233,21 @@ int32 FBuilder::ChunkIndex(const FV3& At) const
 
 FMeshBuf& FBuilder::Mb(const FV3& At, int32 Mat)
 {
+	if (CaptureMod >= 0) return Modules[CaptureMod].Bufs[Mat];
 	if (bSoft) return SoftBufs[Mat];
 	return Bufs[ChunkIndex(At) * CM_Num + Mat];
 }
 
 FMeshBuf& FBuilder::CollBuf(const FV3& At)
 {
+	if (CaptureMod >= 0)
+	{
+		// модули без столкновений: запрос внутри записи — ошибка построителя (тест проверяет счётчик)
+		++CaptureErrors;
+		static FMeshBuf Sink;
+		Sink = FMeshBuf();
+		return Sink;
+	}
 	if (bSoft) return SoftColl;
 	return Coll[ChunkIndex(At)];
 }
@@ -243,7 +255,7 @@ FMeshBuf& FBuilder::CollBuf(const FV3& At)
 void FBuilder::PhysBox(const FV3& Mn, const FV3& Mx, bool bGround)
 {
 	MbBox(CollBuf((Mn + Mx) * 0.5f), Mn, Mx, 1.f);
-	if (!bGround) Solids.Add(FSolid{ Mn, Mx });
+	if (!bGround && CaptureMod < 0) Solids.Add(FSolid{ Mn, Mx });
 }
 
 void FBuilder::PhysTri(const FV3& A, const FV3& B, const FV3& C)
@@ -273,7 +285,7 @@ void FBuilder::PhysObb(const FV3& Center, float Yaw, const FV3& Half)
 	MbQuadBox(M, P[0], P[4], P[6], P[2], Z0, Z1);
 	MbQuadBox(M, P[2], P[6], P[7], P[3], Z0, Z1);
 	MbQuadBox(M, P[0], P[1], P[5], P[4], Z0, Z1);
-	Solids.Add(FSolid{ Mn, Mx });
+	if (CaptureMod < 0) Solids.Add(FSolid{ Mn, Mx });
 }
 
 void FBuilder::Quad(FMeshBuf& M, const FV3& A, const FV3& B, const FV3& C, const FV3& D, FV2 UA, FV2 UB, FV2 UC, FV2 UD, FColor Col)
@@ -378,6 +390,13 @@ void FBuilder::Window(const FBuilding& B, const FFacadeFrame& F, const FOpening&
 	const float Dep = 0.24f;
 	const FColor Tint = B.Tint, Trim = B.TrimCol;
 	const FV3 At = F.P(O.UC, O.V0, 0.f);
+	// стена и заполнение проёма — в ячейку (их нельзя отсекать: была бы дыра); всё остальное — модули с привязкой
+	// к низу проёма по его оси: тот же проём в локальной рамке (UC = 0, V0 = 0)
+	const FFacadeFrame L = LocalFrame();
+	FOpening LO = O;
+	LO.UC = 0.f;
+	LO.V0 = 0.f;
+	auto ShapeKey = [&O](uint32 Kind) { FModKey K(Kind); K.Len(O.W).Len(O.H).Len(O.Rise); return K; };
 	// откосы ниши (у двери без нижнего — порог на уровне мостовой)
 	{
 		FMeshBuf& M = Mb(At, WM);
@@ -387,24 +406,33 @@ void FBuilder::Window(const FBuilding& B, const FFacadeFrame& F, const FOpening&
 	const bool bLit = H01(Rng.U32()) < 0.35f;
 	if (bDoor)
 	{
-		// дверь: полотно, рама, притвор, филёнки и ручка
+		// дверь: полотно (в ячейке), филёнки, рама, притвор и ручка (мелочь)
 		const FColor DoorCol = B.ShutterCol.A ? B.ShutterCol : C3(90, 60, 40);
 		FMeshBuf& MW = Mb(At, CM_Wood);
 		MW.Color = DoorCol;
 		OpeningFill(MW, F, O, -Dep, 0.6f);
-		for (int32 Leaf = 0; Leaf < 2; ++Leaf)
+		bool bBuild = false;
+		const int32 Mod = BeginModule(ShapeKey(1).Col(DoorCol).Col(Trim).H, EModCull::Small, "дверь", bBuild);
+		if (bBuild)
 		{
-			const float LU0 = Leaf ? O.UC + 0.12f : O.U0() + 0.14f, LU1 = Leaf ? O.U1() - 0.14f : O.UC - 0.12f;
-			FacadeBox(MW, F, LU0, LU1, O.V0 + 0.25f, O.V0 + 0.95f, -Dep, -Dep + 0.025f, 0.6f);
-			FacadeBox(MW, F, LU0, LU1, O.V0 + 1.15f, O.Spring() - 0.2f, -Dep, -Dep + 0.025f, 0.6f);
+			FMeshBuf& LW = Mb(At, CM_Wood);
+			LW.Color = DoorCol;
+			for (int32 Leaf = 0; Leaf < 2; ++Leaf)
+			{
+				const float LU0 = Leaf ? LO.UC + 0.12f : LO.U0() + 0.14f, LU1 = Leaf ? LO.U1() - 0.14f : LO.UC - 0.12f;
+				FacadeBox(LW, L, LU0, LU1, LO.V0 + 0.25f, LO.V0 + 0.95f, -Dep, -Dep + 0.025f, 0.6f);
+				FacadeBox(LW, L, LU0, LU1, LO.V0 + 1.15f, LO.Spring() - 0.2f, -Dep, -Dep + 0.025f, 0.6f);
+			}
+			FMeshBuf& MT = Mb(At, CM_Trim);
+			Sash(MT, L, LO, -Dep, 1, 1, true, Trim);
+			MT.Color = Trim;
+			FacadeBox(MT, L, LO.UC - 0.03f, LO.UC + 0.03f, LO.V0, LO.Spring(), -Dep, -Dep + 0.04f, 1.f);
+			FMeshBuf& MI = Mb(At, CM_Iron);
+			MI.Color = C3(30, 30, 34);
+			FacadeBox(MI, L, LO.UC + 0.12f, LO.UC + 0.16f, LO.V0 + 1.05f, LO.V0 + 1.1f, -Dep, -Dep + 0.07f, 1.f);   // ручка
+			EndModule();
 		}
-		FMeshBuf& MT = Mb(At, CM_Trim);
-		Sash(MT, F, O, -Dep, 1, 1, true, Trim);
-		MT.Color = Trim;
-		FacadeBox(MT, F, O.UC - 0.03f, O.UC + 0.03f, O.V0, O.Spring(), -Dep, -Dep + 0.04f, 1.f);
-		FMeshBuf& MI = Mb(At, CM_Iron);
-		MI.Color = C3(30, 30, 34);
-		FacadeBox(MI, F, O.UC + 0.12f, O.UC + 0.16f, O.V0 + 1.05f, O.V0 + 1.1f, -Dep, -Dep + 0.07f, 1.f);   // ручка
+		PlaceModule(Mod, At, F.R);
 	}
 	else
 	{
@@ -413,30 +441,58 @@ void FBuilder::Window(const FBuilding& B, const FFacadeFrame& F, const FOpening&
 		OpeningFill(MG, F, O, -Dep, 1.f);
 	}
 	if (!bDetail) return;
-	if (!bDoor) Sash(Mb(At, CM_Trim), F, O, -Dep, bFrench ? 4 : 3, 1, false, Trim);
-	FMeshBuf& MS = Mb(At, CM_Stone);
-	MS.Color = Tint;
+	if (!bDoor)
+	{
+		// переплёт — мелочь
+		bool bBuild = false;
+		const int32 Mod = BeginModule(ShapeKey(2).Int(bFrench ? 1 : 0).Col(Trim).H, EModCull::Small, "переплёт", bBuild);
+		if (bBuild)
+		{
+			Sash(Mb(At, CM_Trim), L, LO, -Dep, bFrench ? 4 : 3, 1, false, Trim);
+			EndModule();
+		}
+		PlaceModule(Mod, At, F.R);
+	}
+	// каменное обрамление: наличник, подоконник с отливом, замок, сандрик — средние
 	const float SurS = bDoor ? 1.3f : 1.f, SurW = bSurround ? 0.16f * SurS : 0.f;
-	if (bSurround) Surround(MS, F, O, SurS, !bDoor && !bFrench, Tint);
-	// подоконник с отливом
-	if (!bFrench && !bDoor) Moulding(MS, F, O.U0() - SurW - 0.06f, O.U1() + SurW + 0.06f, O.V0 - SurW - 0.10f, EProfile::Sill, 1.f, true, Tint);
-	// замковый камень у арок и у части плоских перемычек; сандрик над французскими окнами
-	if (O.IsArched() || H01(B.Seed * 7u + 3u) > 0.5f) Keystone(MS, F, O, 0.2f + SurW * 0.5f, 0.09f, Tint);
-	if (bFrench && !O.IsArched()) Moulding(MS, F, O.U0() - SurW - 0.12f, O.U1() + SurW + 0.12f, O.Top() + SurW + 0.02f, EProfile::StringCourse, 0.6f, true, Tint);
-	// ставни, раскрытые к стене (петли перед наличником)
+	const bool bKey = O.IsArched() || H01(B.Seed * 7u + 3u) > 0.5f;
+	{
+		bool bBuild = false;
+		const int32 Mod = BeginModule(ShapeKey(3).Int((bDoor ? 1 : 0) | (bFrench ? 2 : 0) | (bSurround ? 4 : 0) | (bKey ? 8 : 0)).Col(Tint).H, EModCull::Medium, "обрамление", bBuild);
+		if (bBuild)
+		{
+			FMeshBuf& MS = Mb(At, CM_Stone);
+			MS.Color = Tint;
+			if (bSurround) Surround(MS, L, LO, SurS, !bDoor && !bFrench, Tint);
+			if (!bFrench && !bDoor) Moulding(MS, L, LO.U0() - SurW - 0.06f, LO.U1() + SurW + 0.06f, LO.V0 - SurW - 0.10f, EProfile::Sill, 1.f, true, Tint);
+			if (bKey) Keystone(MS, L, LO, 0.2f + SurW * 0.5f, 0.09f, Tint);
+			if (bFrench && !O.IsArched()) Moulding(MS, L, LO.U0() - SurW - 0.12f, LO.U1() + SurW + 0.12f, LO.Top() + SurW + 0.02f, EProfile::StringCourse, 0.6f, true, Tint);
+			EndModule();
+		}
+		PlaceModule(Mod, At, F.R);
+	}
+	// ставни, раскрытые к стене (петли перед наличником) — средние; одна ставня — один экземпляр
 	if (B.ShutterCol.A && !bDoor)
 	{
 		const float SW = O.W * 0.5f, SH = O.Top() - O.V0, Ang = 0.25f + 0.5f * H01(Rng.U32());
-		FMeshBuf& M = Mb(At, CM_Shutter);
-		M.Color = B.ShutterCol;
+		bool bBuild = false;
+		const int32 Mod = BeginModule(FModKey(4).Len(SW).Len(SH).Int(bSurround ? 1 : 0).Col(B.ShutterCol).H, EModCull::Medium, "ставня", bBuild);
+		if (bBuild)
+		{
+			FMeshBuf& M = Mb(At, CM_Shutter);
+			M.Color = B.ShutterCol;
+			Shutter(M, L, SW, SH, 0.02f, bSurround);
+			EndModule();
+		}
 		for (int32 S = 0; S < 2; ++S)
 		{
 			const float Hinge = S ? O.U1() + 0.02f : O.U0() - 0.02f, Dir = S ? 1.f : -1.f;
 			const FV3 HB = F.P(Hinge, O.V0, bSurround ? 0.09f : 0.03f);
 			const FV3 Out = Norm(F.R * (Dir * FMath::Cos(Ang)) + F.N * FMath::Sin(Ang));
-			FFacadeFrame SF(HB, Out, Norm(Cross(Out, FV3(0.f, 1.f, 0.f))));
-			if (Dot(SF.N, F.N) < 0.f) SF.N = -SF.N;
-			Shutter(M, SF, SW, SH, 0.02f, bSurround);
+			// лицевая сторона ставни (локальная +Z = Cross(R, Up)) должна смотреть на улицу; иначе ставим ставню
+			// «от свободного края к петле» — полотно симметрично по ширине, занимает то же место
+			if (Dot(Cross(Out, FV3(0.f, 1.f, 0.f)), F.N) >= 0.f) PlaceModule(Mod, HB, Out);
+			else PlaceModule(Mod, HB + Out * SW, -Out);
 		}
 	}
 }
@@ -464,7 +520,6 @@ void FBuilder::Facade(const FBuilding& B, int32 Side, FRng& Rng)
 	const float Margin = (FacadeLen - (float)NB * Bay) * 0.5f;
 	const float H = B.GroundH + (float)(B.Floors - 1) * B.FloorH;
 	const FColor Tint = B.Tint;
-	const FColor IronC = C3(30, 30, 34);
 	// стиль дома (одинаков для всех его фасадов)
 	const bool bRust = bStreet && H01(HMix(B.Seed + 1u)) < 0.6f;               // ленточный руст первого этажа
 	const bool bArchGround = bRust && H01(HMix(B.Seed + 2u)) < 0.6f;          // арки первого этажа
@@ -597,18 +652,24 @@ void FBuilder::Facade(const FBuilding& B, int32 Side, FRng& Rng)
 		{
 			const float BU0 = Margin + Bay * 0.1f, BU1 = FacadeLen - Margin - Bay * 0.1f, BY = FV0;
 			FrameBox(CM_Stone, F, BU0, BU1, BY - 0.18f, BY + 0.02f, 0.f, 0.85f, 0.5f, Tint, true);
-			FMeshBuf& MS = Mb(F.P((BU0 + BU1) * 0.5f, BY, 0.f), CM_Stone);
-			for (int32 K = 0; K < 3; ++K)   // кронштейны
+			// кронштейны — средние модули
+			bool bBuild = false;
+			const int32 Mod = BeginModule(FModKey(5).Col(Tint).H, EModCull::Medium, "кронштейн", bBuild);
+			if (bBuild)
 			{
-				const float CU = BU0 + (BU1 - BU0) * ((float)K + 0.5f) / 3.f;
-				Console(MS, F, CU, 0.24f, BY - 0.18f, 0.9f, Tint);
+				FMeshBuf& MS = Mb(F.O, CM_Stone);
+				Console(MS, LocalFrame(), 0.f, 0.24f, 0.f, 0.9f, Tint);
+				EndModule();
 			}
-			// кованая решётка
-			FrameBox(CM_Iron, F, BU0, BU1, BY + 0.95f, BY + 1.0f, 0.78f, 0.83f, 1.f, IronC, true, true);
-			FrameBox(CM_Iron, F, BU0, BU1, BY + 0.1f, BY + 0.13f, 0.78f, 0.83f, 1.f, IronC, false, true);
-			for (float U = BU0; U <= BU1; U += 0.13f) FrameBox(CM_Iron, F, U, U + 0.02f, BY, BY + 0.97f, 0.79f, 0.82f, 1.f, IronC, false, true);
-			FrameBox(CM_Iron, F, BU0, BU0 + 0.03f, BY, BY + 1.f, 0.f, 0.83f, 1.f, IronC, false);
-			FrameBox(CM_Iron, F, BU1 - 0.03f, BU1, BY, BY + 1.f, 0.f, 0.83f, 1.f, IronC, false);
+			const int32 NCons = FMath::Max(3, FMath::RoundToInt((BU1 - BU0) / 2.2f));
+			for (int32 K = 0; K < NCons; ++K)
+			{
+				const float CU = BU0 + (BU1 - BU0) * ((float)K + 0.5f) / (float)NCons;
+				PlaceModule(Mod, F.P(CU, BY - 0.18f, 0.f), F.R);
+			}
+			Railing(F, BU0, BU1, BY + 0.02f, 0.805f);
+			// уступ для паркура по поручню
+			PhysFrame(BU0, BU1, BY + 0.95f, BY + 1.0f, 0.78f, 0.83f);
 		}
 	}
 	if (bStreet)
@@ -639,7 +700,23 @@ void FBuilder::Facade(const FBuilding& B, int32 Side, FRng& Rng)
 			}
 		}
 		// сухарики под слезником венчающего карниза у богатых фасадов (сам карниз — кольцом в Building)
-		if (bRust || bPilasters) Dentils(MS, F, 0.2f, FacadeLen - 0.2f, H - 0.25f + 0.10f, H - 0.25f + 0.16f, 0.22f, 0.07f, 0.16f);
+		if (bRust || bPilasters)
+		{
+			// по одному зубцу на экземпляр (раскладка как в Dentils: ровные поля по краям) — мелочь
+			const float DU0 = 0.2f, DU1 = FacadeLen - 0.2f, DV0 = H - 0.25f + 0.10f, DV1 = H - 0.25f + 0.16f, DP = 0.22f, DW = 0.07f, DS = 0.16f;
+			bool bBuild = false;
+			const int32 Mod = BeginModule(FModKey(6).Col(Tint).H, EModCull::Small, "сухарик", bBuild);
+			if (bBuild)
+			{
+				FMeshBuf& LM = Mb(F.O, CM_Stone);
+				LM.Color = Tint;
+				FacadeBox(LM, LocalFrame(), 0.f, DW, 0.f, DV1 - DV0, 0.f, DP, 0.5f, BF_Front | BF_Bottom | BF_Left | BF_Right);
+				EndModule();
+			}
+			const int32 ND = FMath::FloorToInt((DU1 - DU0 - DW) / DS) + 1;
+			const float Start = DU0 + (DU1 - DU0 - ((float)(ND - 1) * DS + DW)) * 0.5f;
+			for (int32 I = 0; I < ND; ++I) PlaceModule(Mod, F.P(Start + (float)I * DS, DV0, 0.f), F.R);
+		}
 	}
 	// венчающий карниз — уступ для паркура
 	PhysFrame(-0.25f, FacadeLen + 0.25f, H - 0.25f, H, 0.f, 0.25f);
@@ -650,15 +727,144 @@ void FBuilder::Facade(const FBuilding& B, int32 Side, FRng& Rng)
 
 void FBuilder::Chimney(const FV3& Base, float H, FColor Tint)
 {
-	const FV3 Mn(Base.X - 0.45f, Base.Y, Base.Z - 0.3f), Mx(Base.X + 0.45f, Base.Y + H, Base.Z + 0.3f);
-	Box(CM_Brick, Mn, Mx, 0.5f, Tint, true);
-	Box(CM_Stone, FV3(Mn.X - 0.06f, Mx.Y, Mn.Z - 0.06f), FV3(Mx.X + 0.06f, Mx.Y + 0.12f, Mx.Z + 0.06f), 0.5f, Tint, true);
-	for (int32 I = 0; I < 2; ++I)   // гончарные трубы
+	const float HX = 0.45f, HZ = 0.3f;
+	bool bBuild = false;
+	const int32 Mod = BeginModule(FModKey(8).Len(H).Col(Tint).H, EModCull::Large, "труба", bBuild);
+	if (bBuild)
 	{
+		// кирпичный ствол, каменный пояс, венчающая плита с отливом и гончарные трубы
+		const FV3 Mn(-HX, 0.f, -HZ), Mx(HX, H, HZ);
+		Box(CM_Brick, Mn, Mx, 0.5f, Tint, false);
+		Box(CM_Stone, FV3(Mn.X - 0.04f, H * 0.7f, Mn.Z - 0.04f), FV3(Mx.X + 0.04f, H * 0.7f + 0.08f, Mx.Z + 0.04f), 0.5f, Tint, false);
+		Box(CM_Stone, FV3(Mn.X - 0.06f, H, Mn.Z - 0.06f), FV3(Mx.X + 0.06f, H + 0.12f, Mx.Z + 0.06f), 0.5f, Tint, false);
+		Box(CM_Stone, FV3(Mn.X - 0.02f, H + 0.12f, Mn.Z - 0.02f), FV3(Mx.X + 0.02f, H + 0.17f, Mx.Z + 0.02f), 0.5f, Tint, false);
 		FMeshBuf& M = Mb(Base, CM_Tiles);
-		M.Color = C3(170, 100, 70);
-		MbCylinder(M, FV3(Base.X - 0.2f + (float)I * 0.4f, Mx.Y + 0.12f, Base.Z), 0.09f, 0.07f, 0.3f, 8, true);
+		for (int32 I = 0; I < 3; ++I)
+		{
+			M.Color = I == 1 ? C3(150, 85, 60) : C3(170, 100, 70);
+			MbCylinder(M, FV3(-0.28f + (float)I * 0.28f, H + 0.17f, 0.f), 0.085f, 0.065f, I == 1 ? 0.38f : 0.3f, 8, true);
+		}
+		EndModule();
 	}
+	PlaceModule(Mod, Base, FV3(1.f, 0.f, 0.f));
+	PhysBox(FV3(Base.X - HX, Base.Y, Base.Z - HZ), FV3(Base.X + HX, Base.Y + H, Base.Z + HZ));
+	PhysBox(FV3(Base.X - HX - 0.06f, Base.Y + H, Base.Z - HZ - 0.06f), FV3(Base.X + HX + 0.06f, Base.Y + H + 0.17f, Base.Z + HZ + 0.06f));
+}
+
+void FBuilder::Dormer(const FBuilding& B, const FFacadeFrame& DF, float Ins, bool bLit)
+{
+	// стиль слухового окна — от дома: с полуциркульным окном (lucarne cintrée) или с прямоугольным
+	const bool bArched = H01(HMix(B.Seed + 5u)) < 0.5f;
+	const float D0 = -Ins - 0.2f;   // задняя грань тела (утоплена в скат)
+	bool bBuild = false;
+	const int32 Mod = BeginModule(FModKey(9).Int(bArched ? 1 : 0).Int(bLit ? 1 : 0).Len(Ins).Col(B.Tint).Col(B.TrimCol).H, EModCull::Large, "слуховое окно", bBuild);
+	if (bBuild)
+	{
+		const FFacadeFrame L = LocalFrame();
+		const FV3 O(0.f, 0.f, 0.f);
+		FOpening W;
+		W.UC = 0.f; W.V0 = 0.42f; W.W = 0.68f;
+		if (bArched) { W.Rise = 0.34f; W.H = 0.72f; }
+		else W.H = 1.0f;
+		// тело: щёки, низ и верх (передняя стена — вокруг проёма)
+		FMeshBuf& MP = Mb(O, CM_Plaster);
+		MP.Color = B.Tint;
+		FacadeBox(MP, L, -0.55f, 0.55f, 0.2f, 1.7f, D0, 0.f, 0.5f, BF_Top | BF_Bottom | BF_Left | BF_Right);
+		WallAroundOpening(MP, L, W, -0.55f, 0.55f, 0.2f, 1.7f, 0.5f);
+		Reveal(MP, L, W, 0.12f, 0.5f, true);
+		// стекло, переплёт, наличник с подоконником, карнизик под фронтоном
+		FMeshBuf& MG = Mb(O, CM_Glass);
+		MG.Color = bLit ? C3(255, 200, 120) : C3(40, 46, 52);
+		OpeningFill(MG, L, W, -0.12f, 1.f);
+		Sash(Mb(O, CM_Trim), L, W, -0.12f, 2, 1, false, B.TrimCol);
+		FMeshBuf& MS = Mb(O, CM_Stone);
+		MS.Color = B.Tint;
+		Surround(MS, L, W, 0.7f, true, B.Tint);
+		if (bArched) Keystone(MS, L, W, 0.16f, 0.07f, B.Tint);
+		FacadeBox(MS, L, -0.6f, 0.6f, 1.62f, 1.72f, D0, 0.07f, 0.5f, BF_Front | BF_Bottom | BF_Left | BF_Right);
+		// двускатная крышка (скаты наружу) и её изнанка
+		const FV3 T0 = L.P(-0.65f, 1.72f, 0.12f), T1 = L.P(0.65f, 1.72f, 0.12f), T2 = L.P(0.f, 2.17f, 0.12f);
+		const FV3 K0 = L.P(-0.65f, 1.72f, -Ins - 0.3f), K1 = L.P(0.65f, 1.72f, -Ins - 0.3f), K2 = L.P(0.f, 2.17f, -Ins - 0.3f);
+		const float SL = Dist(T0, T2) * 0.5f, SD = Dist(T0, K0) * 0.5f;
+		FMeshBuf& MR = Mb(O, CM_Slate);
+		Quad(MR, T0, T2, K2, K0, FV2(0.f, 0.f), FV2(SL, 0.f), FV2(SL, SD), FV2(0.f, SD), White);
+		Quad(MR, K1, K2, T2, T1, FV2(0.f, SD), FV2(SL, SD), FV2(SL, 0.f), FV2(0.f, 0.f), White);
+		Quad(MR, T0, K0, K2, T2, FV2(0.f, 0.f), FV2(0.6f, 0.f), FV2(0.6f, 0.4f), FV2(0.f, 0.4f), C3(120, 120, 125));
+		Quad(MR, K1, T1, T2, K2, FV2(0.f, 0.f), FV2(0.6f, 0.f), FV2(0.6f, 0.4f), FV2(0.f, 0.4f), C3(120, 120, 125));
+		// фронтон (оштукатуренный треугольник) с каменной рамкой по скатам
+		const FV3 N(0.f, 0.f, 1.f);
+		const FV3 G0 = L.P(-0.6f, 1.72f, 0.07f), G1 = L.P(0.6f, 1.72f, 0.07f), G2 = L.P(0.f, 2.1f, 0.07f);
+		const int32 Q0 = MP.Vertex(G0, N, FV2(0.f, 0.f)), Q1 = MP.Vertex(G1, N, FV2(0.6f, 0.f)), Q2 = MP.Vertex(G2, N, FV2(0.3f, 0.19f));
+		MP.Tri(Q0, Q1, Q2);
+		EndModule();
+	}
+	PlaceModule(Mod, DF.O, DF.R);
+	// столкновения в мире: тело и скаты крышки
+	FV3 Mn = DF.P(-0.55f, 0.2f, D0), Mx = Mn;
+	for (int32 I = 1; I < 8; ++I)
+	{
+		const FV3 P = DF.P((I & 1) ? 0.55f : -0.55f, (I & 2) ? 1.72f : 0.2f, (I & 4) ? 0.f : D0);
+		Mn = VMin(Mn, P); Mx = VMax(Mx, P);
+	}
+	PhysBox(Mn, Mx);
+	const FV3 T0 = DF.P(-0.65f, 1.72f, 0.12f), T1 = DF.P(0.65f, 1.72f, 0.12f), T2 = DF.P(0.f, 2.17f, 0.12f);
+	const FV3 K0 = DF.P(-0.65f, 1.72f, -Ins - 0.3f), K1 = DF.P(0.65f, 1.72f, -Ins - 0.3f), K2 = DF.P(0.f, 2.17f, -Ins - 0.3f);
+	PhysTri(T0, T2, K2); PhysTri(T0, K2, K0);
+	PhysTri(K1, K2, T2); PhysTri(K1, T2, T1);
+}
+
+void FBuilder::Railing(const FFacadeFrame& F, float BU0, float BU1, float BY, float DOut)
+{
+	// звено решётки шириной PW и высотой 0.98 м: поручень, нижняя и средняя тяги, прутья и пояс колец между ними (кованое железо)
+	auto Panel = [this](float PW) -> int32
+	{
+		bool bBuild = false;
+		const int32 Mod = BeginModule(FModKey(7).Len(PW).H, EModCull::Medium, "решётка", bBuild);
+		if (!bBuild) return Mod;
+		const FFacadeFrame L = LocalFrame();
+		FMeshBuf& M = Mb(L.O, CM_Iron);
+		M.Color = C3(30, 30, 34);
+		FacadeBox(M, L, 0.f, PW, 0.93f, 0.98f, -0.025f, 0.025f, 1.f, BF_All);          // поручень
+		FacadeBox(M, L, 0.f, PW, 0.08f, 0.11f, -0.012f, 0.012f, 1.f, BF_NoBack | BF_Back);
+		FacadeBox(M, L, 0.f, PW, 0.31f, 0.33f, -0.012f, 0.012f, 1.f, BF_NoBack | BF_Back);
+		const int32 NBar = FMath::Max(2, FMath::RoundToInt(PW / 0.13f));
+		const float Step = PW / (float)NBar;
+		for (int32 K = 0; K < NBar; ++K)
+		{
+			const float U = ((float)K + 0.5f) * Step;
+			FacadeBox(M, L, U - 0.009f, U + 0.009f, 0.f, 0.93f, -0.009f, 0.009f, 1.f, BF_Front | BF_Back | BF_Left | BF_Right);
+		}
+		// кольца между прутьями: плоские восьмиугольные полосы (лицо и изнанка, 32 треугольника на кольцо)
+		const float RO = FMath::Min(Step * 0.42f, 0.085f), RI = RO - 0.014f, VC = 0.21f, T = 0.006f;
+		for (int32 K = 0; K + 1 < NBar; ++K)
+		{
+			const float UC = ((float)K + 1.f) * Step;
+			for (int32 J = 0; J < 8; ++J)
+			{
+				const float A0 = CityTau * (float)J / 8.f, A1 = CityTau * (float)(J + 1) / 8.f;
+				const float C0 = FMath::Cos(A0), S0 = FMath::Sin(A0), C1 = FMath::Cos(A1), S1 = FMath::Sin(A1);
+				for (int32 Sd = 0; Sd < 2; ++Sd)
+				{
+					const float D = Sd ? -T : T;
+					const FV3 O0(UC + RO * C0, VC + RO * S0, D), O1(UC + RO * C1, VC + RO * S1, D);
+					const FV3 I0(UC + RI * C0, VC + RI * S0, D), I1(UC + RI * C1, VC + RI * S1, D);
+					const FV2 UA(0.f, 0.f), UB(0.1f, 0.f), UC2(0.1f, 0.02f), UD(0.f, 0.02f);
+					OrientedQuad(M, I0, O0, O1, I1, UA, UB, UC2, UD, FV3(0.f, 0.f, Sd ? -1.f : 1.f));
+				}
+			}
+		}
+		EndModule();
+		return Mod;
+	};
+	// фасадная часть — звенья ≈ 1.3 м
+	const int32 NP = FMath::Max(1, FMath::RoundToInt((BU1 - BU0) / 1.3f));
+	const float PW = (BU1 - BU0) / (float)NP;
+	const int32 Front = Panel(PW);
+	for (int32 K = 0; K < NP; ++K) PlaceModule(Front, F.P(BU0 + (float)K * PW, BY, DOut), F.R);
+	// боковые звенья от стены до поручня
+	const int32 Side = Panel(DOut - 0.03f);
+	PlaceModule(Side, F.P(BU0 + 0.025f, BY, 0.03f), F.N);
+	PlaceModule(Side, F.P(BU1 - 0.025f, BY, 0.03f), F.N);
 }
 
 void FBuilder::RoofOf(const FBuilding& B, FRng& Rng)
@@ -721,22 +927,20 @@ void FBuilder::RoofOf(const FBuilding& B, FRng& Rng)
 				default: P = FV3(X0, H, Z0 + U); N = FV3(-1.f, 0.f, 0.f); break;
 				}
 				const FV3 R = Cross(FV3(0.f, 1.f, 0.f), N);
-				const FFacadeFrame DF(P + N * -0.25f, R, N);
-				FrameBox(CM_Plaster, DF, -0.55f, 0.55f, 0.2f, 1.7f, -Ins - 0.2f, 0.f, 0.5f, B.Tint, true);
-				FrameRect(CM_Glass, DF, -0.35f, 0.35f, 0.4f, 1.45f, 0.01f, 1.f, H01(Rng.U32()) < 0.3f ? C3(255, 200, 120) : C3(40, 46, 52));
-				FrameBox(CM_Trim, DF, -0.4f, 0.4f, 1.45f, 1.52f, -0.02f, 0.04f, 1.f, B.TrimCol, false);
-				// двускатная крышка (обход развёрнут относительно оригинала — скаты смотрят наружу)
-				const FV3 T0 = DF.P(-0.65f, 1.7f, 0.1f), T1 = DF.P(0.65f, 1.7f, 0.1f), T2 = DF.P(0.f, 2.15f, 0.1f);
-				const FV3 K0 = DF.P(-0.65f, 1.7f, -Ins - 0.3f), K1 = DF.P(0.65f, 1.7f, -Ins - 0.3f), K2 = DF.P(0.f, 2.15f, -Ins - 0.3f);
-				RoofQuad(CM_Slate, T0, T2, K2, K0, 0.5f);
-				RoofQuad(CM_Slate, K1, K2, T2, T1, 0.5f);
-				// изнанка крышки (свес виден снизу)
-				Quad(Mb(T0, CM_Slate), T0, K0, K2, T2, FV2(0.f, 0.f), FV2(0.6f, 0.f), FV2(0.6f, 0.4f), FV2(0.f, 0.4f), C3(120, 120, 125));
-				Quad(Mb(T1, CM_Slate), K1, T1, T2, K2, FV2(0.f, 0.f), FV2(0.6f, 0.f), FV2(0.6f, 0.4f), FV2(0.f, 0.4f), C3(120, 120, 125));
-				FMeshBuf& M = Mb(T0, CM_Plaster);
-				M.Color = B.Tint;
-				const int32 Q0 = M.Vertex(T0, N, FV2(0.f, 0.f)), Q1 = M.Vertex(T1, N, FV2(0.6f, 0.f)), Q2 = M.Vertex(T2, N, FV2(0.3f, 0.25f));
-				M.Tri(Q0, Q1, Q2);
+				// лицо слухового окна — почти в плоскости стены, над венчающим карнизом (подоконник выше ската)
+				const FFacadeFrame DF(P + N * -0.05f, R, N);
+				Dormer(B, DF, Ins, H01(Rng.U32()) < 0.3f);
+			}
+		}
+		// линия перелома мансарды — тяга по кольцу; конёк — свинцовый валик
+		{
+			FMeshBuf& MS = Mb(FV3(CXM, H + H1, CZM), CM_Stone);
+			MouldingLoop(MS, X0 + Ins, Z0 + Ins, X1 - Ins, Z1 - Ins, H + H1 - 0.1f, EProfile::StringCourse, 0.5f, B.Tint);
+			if (Half > 0.05f)
+			{
+				const FV3 A = bAlongX ? FV3(R0.X - 0.1f, R0.Y - 0.02f, R0.Z - 0.07f) : FV3(R0.X - 0.07f, R0.Y - 0.02f, R0.Z - 0.1f);
+				const FV3 C = bAlongX ? FV3(R1.X + 0.1f, R1.Y + 0.07f, R1.Z + 0.07f) : FV3(R1.X + 0.07f, R1.Y + 0.07f, R1.Z + 0.1f);
+				Box(CM_Iron, A, C, 1.f, C3(110, 115, 125), false);
 			}
 		}
 		const int32 NCh = 1 + (int32)(H01(Rng.U32()) * 3.f);
@@ -822,15 +1026,24 @@ void FBuilder::Building(const FBuilding& B)
 
 void FBuilder::Lamp(const FV3& P)
 {
-	FMeshBuf& M = Mb(P, CM_Iron);
-	M.Color = C3(28, 28, 32);
-	MbCylinder(M, P, 0.09f, 0.06f, 0.5f, 10, true);
-	MbCylinder(M, FV3(P.X, P.Y + 0.5f, P.Z), 0.05f, 0.04f, 3.2f, 8, false);
-	MbCylinder(M, FV3(P.X, P.Y + 3.7f, P.Z), 0.2f, 0.12f, 0.12f, 8, true);
-	MbCylinder(M, FV3(P.X, P.Y + 4.25f, P.Z), 0.02f, 0.22f, 0.25f, 8, true);
-	FMeshBuf& G = Mb(P, CM_Lamp);
-	G.Color = White;
-	MbCylinder(G, FV3(P.X, P.Y + 3.82f, P.Z), 0.16f, 0.2f, 0.43f, 8, true);
+	// столб и фонарь — крупный модуль (одинаковые по всему кварталу)
+	bool bBuild = false;
+	const int32 Mod = BeginModule(FModKey(10).H, EModCull::Large, "фонарь", bBuild);
+	if (bBuild)
+	{
+		const FV3 O(0.f, 0.f, 0.f);
+		FMeshBuf& M = Mb(O, CM_Iron);
+		M.Color = C3(28, 28, 32);
+		MbCylinder(M, O, 0.09f, 0.06f, 0.5f, 10, true);
+		MbCylinder(M, FV3(0.f, 0.5f, 0.f), 0.05f, 0.04f, 3.2f, 8, false);
+		MbCylinder(M, FV3(0.f, 3.7f, 0.f), 0.2f, 0.12f, 0.12f, 8, true);
+		MbCylinder(M, FV3(0.f, 4.25f, 0.f), 0.02f, 0.22f, 0.25f, 8, true);
+		FMeshBuf& G = Mb(O, CM_Lamp);
+		G.Color = White;
+		MbCylinder(G, FV3(0.f, 3.82f, 0.f), 0.16f, 0.2f, 0.43f, 8, true);
+		EndModule();
+	}
+	PlaceModule(Mod, P, FV3(1.f, 0.f, 0.f));
 	PhysBox(FV3(P.X - 0.08f, P.Y, P.Z - 0.08f), FV3(P.X + 0.08f, P.Y + 4.3f, P.Z + 0.08f));
 	LampPts.Add(FV3(P.X, P.Y + 4.f, P.Z));
 }
@@ -996,7 +1209,150 @@ int32 FBuilder::CountTriangles() const
 	int32 N = 0;
 	for (const FMeshBuf& M : Bufs) N += M.Idx.Num() / 3;
 	for (const FMeshBuf& M : SoftBufs) N += M.Idx.Num() / 3;
+	for (const FModule& Md : Modules) N += Md.NumTris() * Md.Inst.Num();
 	return N;
+}
+
+// ---------------------------------------------------------------- модули
+
+FModCullDist GetModCullDist(EModCull C)
+{
+	switch (C)
+	{
+	case EModCull::Small: return FModCullDist{ 60.f, 80.f };
+	case EModCull::Medium: return FModCullDist{ 120.f, 150.f };
+	default: return FModCullDist{ 0.f, 0.f };   // без отсечения
+	}
+}
+
+FV3 FModInstance::LocalDir(const FV3& D) const
+{
+	const FV3 N(-R.Z, 0.f, R.X);   // Cross(R, Up) при R.Y = 0
+	return R * D.X + FV3(0.f, D.Y, 0.f) + N * D.Z;
+}
+
+FV3 FModInstance::Local(const FV3& P) const
+{
+	return Pos + LocalDir(P);
+}
+
+int32 FModule::NumTris() const
+{
+	int32 N = 0;
+	for (const FMeshBuf& M : Bufs) N += M.Idx.Num() / 3;
+	return N;
+}
+
+int32 FModule::NumSections() const
+{
+	int32 N = 0;
+	for (const FMeshBuf& M : Bufs) N += M.IsEmpty() ? 0 : 1;
+	return N;
+}
+
+FFacadeFrame FBuilder::LocalFrame()
+{
+	return FFacadeFrame(FV3(0.f, 0.f, 0.f), FV3(1.f, 0.f, 0.f), FV3(0.f, 0.f, 1.f));
+}
+
+int32 FBuilder::BeginModule(uint64 Key, EModCull Cull, const char* Name, bool& bBuild)
+{
+	check(CaptureMod < 0);
+	for (int32 I = 0; I < Modules.Num(); ++I)
+	{
+		if (Modules[I].Key == Key) { bBuild = false; return I; }
+	}
+	const int32 I = Modules.AddDefaulted();
+	FModule& Md = Modules[I];
+	Md.Key = Key;
+	Md.Cull = Cull;
+	Md.Name = Name;
+	Md.Bufs.SetNum(CM_Num);
+	CaptureMod = I;
+	bBuild = true;
+	return I;
+}
+
+void FBuilder::EndModule()
+{
+	CaptureMod = -1;
+}
+
+void FBuilder::PlaceModule(int32 Mod, const FV3& Pos, const FV3& R)
+{
+	if (!Modules.IsValidIndex(Mod) || Modules[Mod].IsEmpty()) return;
+	const FV3 H = Norm(FV3(R.X, 0.f, R.Z));
+	Modules[Mod].Inst.Add(FModInstance(Pos, H));
+}
+
+static bool ModInRange(const FModule& Md, const FModInstance& In, const FV3* Eye)
+{
+	if (!Eye || Md.Cull == EModCull::Large) return true;
+	const float End = GetModCullDist(Md.Cull).End;
+	const FV3 D = In.Pos - *Eye;
+	return Dot(D, D) <= End * End;
+}
+
+void FBuilder::BakeModule(int32 Mod, const FV3* Eye)
+{
+	if (!Modules.IsValidIndex(Mod)) return;
+	FModule& Md = Modules[Mod];
+	for (const FModInstance& In : Md.Inst)
+	{
+		if (!ModInRange(Md, In, Eye)) continue;
+		for (int32 Mi = 0; Mi < CM_Num && Mi < Md.Bufs.Num(); ++Mi)
+		{
+			const FMeshBuf& S = Md.Bufs[Mi];
+			if (S.IsEmpty()) continue;
+			FMeshBuf& D = Bufs[ChunkIndex(In.Pos) * CM_Num + Mi];
+			const int32 Base = D.NumVerts();
+			for (int32 V = 0; V < S.Pos.Num(); ++V)
+			{
+				D.Color = S.Col[V];
+				D.Vertex(In.Local(S.Pos[V]), In.LocalDir(S.Nrm[V]), S.UV[V]);
+			}
+			for (const int32 I : S.Idx) D.Idx.Add(Base + I);
+		}
+	}
+	Md.Inst.Reset();
+}
+
+void FBuilder::BakeModules(const FV3* Eye)
+{
+	for (int32 I = 0; I < Modules.Num(); ++I) BakeModule(I, Eye);
+}
+
+FCityStats FBuilder::ComputeStats(const FV3* Eye) const
+{
+	FCityStats St;
+	for (const FMeshBuf& M : Bufs)
+	{
+		if (M.IsEmpty()) continue;
+		St.ChunkTris += M.Idx.Num() / 3;
+		++St.ChunkSections;
+	}
+	for (const FMeshBuf& M : SoftBufs)
+	{
+		if (M.IsEmpty()) continue;
+		St.ChunkTris += M.Idx.Num() / 3;
+		++St.ChunkSections;
+	}
+	St.ShadowSections = St.ChunkSections;
+	for (const FModule& Md : Modules)
+	{
+		if (Md.Inst.Num() == 0 || Md.IsEmpty()) continue;
+		const int32 T = Md.NumTris(), S = Md.NumSections();
+		++St.Modules;
+		St.ModuleSections += S;
+		St.Instances += Md.Inst.Num();
+		St.ModuleTrisAll += (int64)T * Md.Inst.Num();
+		int32 Vis = 0;
+		for (const FModInstance& In : Md.Inst) Vis += ModInRange(Md, In, Eye) ? 1 : 0;
+		St.ModuleTrisVisible += (int64)T * Vis;
+		if (Vis > 0) St.ModuleSectionsVisible += S;
+		if (Md.Cull == EModCull::Large) St.ShadowSections += S;
+	}
+	return St;
 }
 
 // ---------------------------------------------------------------- квартал

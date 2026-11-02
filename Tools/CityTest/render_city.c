@@ -1,7 +1,7 @@
 /* Тени Парижа — превью квартала: читает геометрию из dump_scene и рисует её рендером Lutèce без окна (EGL/Mesa)
    с процедурными материалами города (lu_city_materials). Запуск: render_city scene.bin out.ppm вид [час]
    Виды ряда домов: street (с тротуара), elev (фасады прямо), win (окна вблизи), door (первый этаж), corner (угол снизу),
-   roof (сверху на карнизы); квартала: level. */
+   roof (сверху на карнизы), balc (балкон), dormer (слуховые окна); квартала: level. */
 #include "platform/lu_platform.h"
 #include "gfx/lu_gfx.h"
 #include "world/lu_city.h"
@@ -54,6 +54,8 @@ int main(int argc, char **argv) {
     else if (!strcmp(view, "corner")) cam = (lu_camera){V3(66.f, 1.7f, -5.f), V3(60.5f, 9.f, 1.f), V3(0, 1, 0), 1.0f, .1f, 300.f};
     else if (!strcmp(view, "roof")) cam = (lu_camera){V3(68.f, 24.f, -6.f), V3(57.f, 17.f, 3.f), V3(0, 1, 0), .9f, .1f, 300.f};
     else if (!strcmp(view, "shop")) cam = (lu_camera){V3(46.f, 1.7f, -6.f), V3(53.f, 2.5f, 0), V3(0, 1, 0), .9f, .1f, 300.f};
+    else if (!strcmp(view, "balc")) cam = (lu_camera){V3(3.f, 6.5f, -4.f), V3(6.5f, 4.6f, 0.5f), V3(0, 1, 0), .8f, .1f, 300.f};
+    else if (!strcmp(view, "dormer")) cam = (lu_camera){V3(8.f, 21.f, -5.f), V3(5.f, 17.3f, 0.5f), V3(0, 1, 0), .8f, .1f, 300.f};
     else if (!strcmp(view, "level")) cam = (lu_camera){V3(-25, 40, -35), V3(55, 0, 50), V3(0, 1, 0), .9f, .5f, 900.f};
     for (int pass = 0; pass < 2; pass++) {
         lu_gfx_begin(W, H, lu_platform_fbo()); lu_gfx_camera(&cam); lu_gfx_env(&e);

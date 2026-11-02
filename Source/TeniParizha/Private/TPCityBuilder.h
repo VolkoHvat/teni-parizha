@@ -92,6 +92,67 @@ namespace TPCity
 
 	struct FOpening;   // проём (TPCityElements.h)
 
+	/**
+	 * Класс отсечения модуля по расстоянию до камеры (в UE — отсечение экземпляров HISM):
+	 * мелочь (переплёты, сухарики, филёнки дверей) — 60–80 м и без теней; средние (наличники, ставни, решётки,
+	 * кронштейны) — 120–150 м и без теней; крупные (трубы, слуховые окна, фонари) — без отсечения и с тенями.
+	 */
+	enum class EModCull : uint8 { Small, Medium, Large };
+
+	/** расстояния отсечения классов (м): начало плавного исчезновения и полное отсечение */
+	struct FModCullDist { float Start, End; };
+	FModCullDist GetModCullDist(EModCull C);
+
+	/**
+	 * Экземпляр модуля: точка привязки и направление локальной оси +X (горизонтальное, единичное).
+	 * Локальная +Y — вверх, локальная +Z = Cross(R, Up) — поворот вокруг вертикали без отражения
+	 * (так же устроены рамки фасадов: N = Cross(R, Up) для всех четырёх сторон).
+	 */
+	struct FModInstance
+	{
+		FV3 Pos, R;
+		FModInstance() {}
+		FModInstance(const FV3& InPos, const FV3& InR) : Pos(InPos), R(InR) {}
+		FV3 Local(const FV3& P) const;    // локальная точка → мир
+		FV3 LocalDir(const FV3& D) const; // локальное направление → мир
+	};
+
+	/** повторяющийся элемент квартала: геометрия в локальных координатах (по материалам) и список экземпляров */
+	struct FModule
+	{
+		uint64 Key = 0;
+		EModCull Cull = EModCull::Medium;
+		const char* Name = "";
+		TArray<FMeshBuf> Bufs;            // [материал]
+		TArray<FModInstance> Inst;
+		int32 NumTris() const;
+		int32 NumSections() const;        // непустые материалы (секции UStaticMesh)
+		bool IsEmpty() const { return NumTris() == 0; }
+	};
+
+	/** накопитель ключа модуля (FNV-1a по полям; длины квантуются до миллиметра) */
+	struct FModKey
+	{
+		uint64 H = 1469598103934665603ULL;
+		explicit FModKey(uint32 Kind) { Int((int32)Kind); }
+		FModKey& Int(int32 V) { for (int32 I = 0; I < 4; ++I) { H ^= (uint64)((V >> (I * 8)) & 0xFF); H *= 1099511628211ULL; } return *this; }
+		FModKey& Len(float V) { return Int((int32)FMath::RoundToInt(V * 1000.f)); }
+		FModKey& Col(FColor C) { return Int((int32)(((uint32)C.R << 24) | ((uint32)C.G << 16) | ((uint32)C.B << 8) | (uint32)C.A)); }
+	};
+
+	/** счётчики для бюджета кадра */
+	struct FCityStats
+	{
+		int32 ChunkTris = 0, ChunkSections = 0;           // ячейки процедурного меша (видимые секции)
+		int32 Modules = 0, ModuleSections = 0, Instances = 0;
+		int64 ModuleTrisAll = 0;                          // все экземпляры
+		int64 ModuleTrisVisible = 0;                      // экземпляры ближе расстояния отсечения от точки Eye
+		int32 ModuleSectionsVisible = 0;                  // секции модулей, у которых виден хотя бы один экземпляр
+		int32 ShadowSections = 0;                         // секции, отбрасывающие тень (ячейки + крупные модули)
+		int64 TrisVisible() const { return (int64)ChunkTris + ModuleTrisVisible; }
+		int32 DrawCallsVisible() const { return ChunkSections + ModuleSectionsVisible; }
+	};
+
 	class FBuilder
 	{
 	public:
@@ -116,8 +177,33 @@ namespace TPCity
 		float GroundHeight(float X, float Z) const;
 		/** пересекает ли капсула человека (0.4..1.6 м над точкой, радиус R) что-нибудь твёрдое */
 		bool CapsuleBlocked(const FV3& P, float R) const;
-		/** число треугольников во всех видимых буферах */
+		/** число треугольников во всех видимых буферах (ячейки, мягкие предметы и все экземпляры модулей) */
 		int32 CountTriangles() const;
+
+		// --- модули (повторяющиеся элементы → UStaticMesh + HISM в UE) ---
+		/**
+		 * Найти модуль по ключу. Если его ещё нет, создаётся новый и включается запись: до EndModule() все
+		 * Mb(…) пишут в локальные буферы модуля, а bBuild = true — вызывающий строит геометрию в LocalFrame().
+		 * Столкновения внутри записи запрещены (модули без столкновений): их ставят в мире отдельно.
+		 */
+		int32 BeginModule(uint64 Key, EModCull Cull, const char* Name, bool& bBuild);
+		void EndModule();
+		/** поставить экземпляр (пустые модули пропускаются) */
+		void PlaceModule(int32 Mod, const FV3& Pos, const FV3& R);
+		/** рамка фасада для записи модуля: начало в нуле, R = +X, N = +Z */
+		static FFacadeFrame LocalFrame();
+		/**
+		 * Перенести экземпляры модулей в ячейки (запасной путь без UStaticMesh и превью). Eye != nullptr — как в игре:
+		 * экземпляры дальше расстояния отсечения своего класса от точки Eye пропускаются. Модули после этого пусты.
+		 */
+		void BakeModules(const FV3* Eye = nullptr);
+		/** перенести один модуль (если UStaticMesh для него не построился) */
+		void BakeModule(int32 Mod, const FV3* Eye = nullptr);
+		/** счётчики бюджета; Eye — точка камеры для отсечения модулей (nullptr — без отсечения) */
+		FCityStats ComputeStats(const FV3* Eye) const;
+
+		TArray<FModule> Modules;
+		int32 CaptureErrors = 0;   // столкновения, запрошенные во время записи модуля (должно быть 0)
 
 		// --- результат ---
 		int32 CW = 0, CH = 0;
@@ -139,6 +225,7 @@ namespace TPCity
 		TArray<FSolid> Solids;       // для проверки точек прогулок
 		TArray<FFlat> Flats;         // приподнятые площадки (тротуары, площадь)
 		bool bSoft = false;          // писать в мягкие буферы
+		int32 CaptureMod = -1;       // записываемый модуль (−1 — запись в ячейки)
 
 		int32 ChunkIndex(const FV3& At) const;
 		FMeshBuf& CollBuf(const FV3& At);
@@ -158,6 +245,10 @@ namespace TPCity
 		void Window(const FBuilding& B, const FFacadeFrame& F, const FOpening& O, int32 WM, bool bDetail, bool bFrench, bool bDoor, bool bSurround, FRng& Rng);
 		void Facade(const FBuilding& B, int32 Side, FRng& Rng);
 		void Chimney(const FV3& Base, float H, FColor Tint);
+		/** слуховое окно мансарды: рамка DF (низ проёма в кровле, N — наружу), Ins — вынос нижнего ската */
+		void Dormer(const FBuilding& B, const FFacadeFrame& DF, float Ins, bool bLit);
+		/** кованая решётка балкона от BU0 до BU1 на отметке BY, в DOut м от стены (звенья-модули) */
+		void Railing(const FFacadeFrame& F, float BU0, float BU1, float BY, float DOut);
 		void RoofOf(const FBuilding& B, FRng& Rng);
 	};
 
