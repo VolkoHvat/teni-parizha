@@ -1,4 +1,4 @@
-// Тени Парижа — процедурный квартал: выгрузка геометрии TPCityBuilder в UProceduralMeshComponent и материалы
+﻿// Тени Парижа — процедурный квартал: выгрузка геометрии TPCityBuilder в UProceduralMeshComponent и материалы
 // из процедурных текстур TPTexGen. Владелец модуля: агент «город».
 //
 // Координаты: построитель работает в системе Lutèce (метры, Y вверх, правая тройка); здесь
@@ -100,7 +100,7 @@ namespace TPCityGenImpl
 		Tex->NeverStream = true;
 		Tex->AddressX = TA_Wrap;
 		Tex->AddressY = TA_Wrap;
-		FTexturePlatformData* PD = Tex->GetPlatformData();
+		FTexturePlatformData* PD = Tex->PlatformData;
 		if (!PD || PD->Mips.Num() == 0) return nullptr;
 		{
 			FTexture2DMipMap& Mip0 = PD->Mips[0];
@@ -114,7 +114,10 @@ namespace TPCityGenImpl
 		{
 			S = FMath::Max(1, S / 2);
 			if (Mips[L].Num() != S * S) break;
-			FTexture2DMipMap* Mip = new FTexture2DMipMap(S, S, 1);   // так же создаёт нулевой уровень сам CreateTransient
+			FTexture2DMipMap* Mip = new FTexture2DMipMap();   // так же создаёт нулевой уровень сам CreateTransient
+			Mip->SizeX = S;
+			Mip->SizeY = S;
+			Mip->SizeZ = 1;
 			PD->Mips.Add(Mip);
 			Mip->BulkData.Lock(LOCK_READ_WRITE);
 			void* Data = Mip->BulkData.Realloc((int64)S * S * (int64)sizeof(FColor));
@@ -362,7 +365,7 @@ void ATPCityGenerator::BeginPlay()
 bool ATPCityGenerator::HasCity() const
 {
 	if (Chunks.Num() == 0) return false;
-	for (const TObjectPtr<UProceduralMeshComponent>& C : Chunks)
+	for (UProceduralMeshComponent* C : Chunks)
 	{
 		if (!IsValid(C) || !C->IsRegistered()) return false;
 	}
@@ -377,7 +380,7 @@ void ATPCityGenerator::ClearCity()
 	{
 		if (IsValid(C) && C->ComponentHasTag(TagCityChunk)) C->DestroyComponent();
 	}
-	for (const TObjectPtr<UProceduralMeshComponent>& C : Chunks)
+	for (UProceduralMeshComponent* C : Chunks)
 	{
 		if (IsValid(C)) C->DestroyComponent();
 	}

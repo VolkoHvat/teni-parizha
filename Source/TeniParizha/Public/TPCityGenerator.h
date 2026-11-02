@@ -1,4 +1,4 @@
-// Тени Парижа — процедурный квартал Парижа 1789 года (фасады, карнизы, балконы, мансарды, мостовые, площадь).
+﻿// Тени Парижа — процедурный квартал Парижа 1789 года (фасады, карнизы, балконы, мансарды, мостовые, площадь).
 // Владелец модуля: агент «город».
 //
 // Геометрия строится в TPCityBuilder (порт lu_city.c) и выгружается в несколько UProceduralMeshComponent-«ячеек» 24×24 м:
@@ -54,8 +54,8 @@ public:
 	static const FName TagSoft;
 
 protected:
-	UPROPERTY(VisibleAnywhere) TObjectPtr<USceneComponent> Root;
-	UPROPERTY(Transient) TArray<TObjectPtr<UProceduralMeshComponent>> Chunks;
+	UPROPERTY(VisibleAnywhere) USceneComponent* Root = nullptr;
+	UPROPERTY(Transient) TArray<UProceduralMeshComponent*> Chunks;
 	UPROPERTY() TArray<FVector> WalkPoints;
 	UPROPERTY() TArray<FVector> LampPoints;
 	UPROPERTY() TArray<FVector> HayPoints;
