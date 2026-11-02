@@ -1,11 +1,15 @@
 # -*- coding: utf-8 -*-
 """
-Тени Парижа — настройка проекта в редакторе Unreal Engine 5 (Python, плагин Python Editor Script Plugin).
+Тени Парижа — настройка проекта в редакторе Unreal Engine 4.27 (Python, плагин Python Editor Script Plugin).
+
+Скрипт написан под Python API 4.27: уровень и акторы — через unreal.EditorLevelLibrary (подсистемы редактора
+UnrealEditorSubsystem / LevelEditorSubsystem / EditorActorSubsystem появились только в UE5 и используются, если они есть).
 
 Что делает (можно запускать сколько угодно раз — повторный запуск ничего не дублирует):
   1. создаёт папки /Game/TeniParizha/Materials и /Game/Maps;
   2. создаёт (или пересобирает) материалы
        M_TPBase        — непрозрачный: Albedo × VertexColor × Tint, Normal, ORM → AO / Roughness / Metallic, UV = TexCoord × UVScale;
+                         стены темнеют у земли (брызги и сырость): параметры GroundGrime (0..1), GrimeBase и GrimeHeight (см);
        M_TPBaseMasked  — то же, Masked + Two Sided, Opacity Mask из альфы альбедо (листва, ткань навесов);
        M_TPEmissive    — свечение: Emissive = Color × Intensity (стёкла фонарей);
      текстуры по умолчанию для параметров — свои копии движковых (T_TPDefault_*), с правильными sRGB/сжатием,
@@ -131,6 +135,12 @@ def expr(mat, cls, x, y):
 
 
 def connect(a, out_name, b, in_name):
+    if in_name == "":
+        # у узлов с одним входом (OneMinus, Saturate, ComponentMask) имя входа в разных версиях — "" или "Input"
+        if MEL.connect_material_expressions(a, out_name, b, "") or MEL.connect_material_expressions(a, out_name, b, "Input"):
+            return
+        warn("  не удалось соединить " + a.get_name() + "." + (out_name or "<выход>") + " → " + b.get_name() + " (единственный вход)")
+        return
     if not MEL.connect_material_expressions(a, out_name, b, in_name):
         warn("  не удалось соединить " + a.get_name() + "." + (out_name or "<выход>") + " → " + b.get_name() + "." + in_name)
 
@@ -148,6 +158,13 @@ def texture_param(mat, name, tex, x, y, uv):
         node.set_editor_property("sampler_type", sampler_type_for(tex))
     if not MEL.connect_material_expressions(uv, "", node, "UVs"):
         connect(uv, "", node, "Coordinates")   # другое имя того же входа
+    return node
+
+
+def scalar_param(mat, name, value, x, y):
+    node = expr(mat, unreal.MaterialExpressionScalarParameter, x, y)
+    node.set_editor_property("parameter_name", name)
+    node.set_editor_property("default_value", value)
     return node
 
 
@@ -192,7 +209,39 @@ def build_base_material(name, masked, defaults):
     m2 = expr(mat, unreal.MaterialExpressionMultiply, -250, -300)
     connect(m1, "", m2, "A")
     connect(tint, "", m2, "B")
-    to_property(m2, "", P.MP_BASE_COLOR)
+
+    # тёмная полоса у земли: Dark = (1 − saturate((Z − GrimeBase) / GrimeHeight)) × 0.45 × GroundGrime; BaseColor × (1 − Dark)
+    # (несколько арифметических инструкций, без текстур; игра включает GroundGrime = 1 только у стен)
+    wp = expr(mat, unreal.MaterialExpressionWorldPosition, -1400, -900)
+    mask = expr(mat, unreal.MaterialExpressionComponentMask, -1200, -900)
+    for ch, on in (("r", False), ("g", False), ("b", True), ("a", False)):
+        mask.set_editor_property(ch, on)
+    connect(wp, "", mask, "")
+    gbase = scalar_param(mat, "GrimeBase", 12.0, -1200, -780)
+    gheight = scalar_param(mat, "GrimeHeight", 110.0, -1000, -780)
+    gamount = scalar_param(mat, "GroundGrime", 0.0, -600, -780)
+    sub = expr(mat, unreal.MaterialExpressionSubtract, -1000, -900)
+    connect(mask, "", sub, "A")
+    connect(gbase, "", sub, "B")
+    div = expr(mat, unreal.MaterialExpressionDivide, -850, -900)
+    connect(sub, "", div, "A")
+    connect(gheight, "", div, "B")
+    sat = expr(mat, unreal.MaterialExpressionSaturate, -700, -900)
+    connect(div, "", sat, "")
+    inv = expr(mat, unreal.MaterialExpressionOneMinus, -580, -900)
+    connect(sat, "", inv, "")
+    k = expr(mat, unreal.MaterialExpressionMultiply, -460, -900)
+    k.set_editor_property("const_b", 0.45)
+    connect(inv, "", k, "A")
+    dark = expr(mat, unreal.MaterialExpressionMultiply, -340, -860)
+    connect(k, "", dark, "A")
+    connect(gamount, "", dark, "B")
+    keep = expr(mat, unreal.MaterialExpressionOneMinus, -220, -860)
+    connect(dark, "", keep, "")
+    m3 = expr(mat, unreal.MaterialExpressionMultiply, -100, -400)
+    connect(m2, "", m3, "A")
+    connect(keep, "", m3, "B")
+    to_property(m3, "", P.MP_BASE_COLOR)
 
     to_property(nrm, "RGB", P.MP_NORMAL)
     to_property(orm, "R", P.MP_AMBIENT_OCCLUSION)
@@ -203,7 +252,7 @@ def build_base_material(name, masked, defaults):
 
     MEL.recompile_material(mat)
     EAL.save_asset(path, only_if_is_dirty=False)
-    log("  " + name + ": " + ("Masked, Two Sided" if masked else "Opaque") + ", параметры Albedo / Normal / ORM / Tint / UVScale — сохранён")
+    log("  " + name + ": " + ("Masked, Two Sided" if masked else "Opaque") + ", параметры Albedo / Normal / ORM / Tint / UVScale / GroundGrime — сохранён")
     return mat
 
 
@@ -232,21 +281,26 @@ def build_emissive_material(name):
 
 # ---------------------------------------------------------------- уровень
 
-def subsystem(cls):
+def subsystem(name):
+    """подсистема редактора UE5 по имени класса; в 4.27 таких классов нет — тогда None и работает EditorLevelLibrary"""
+    cls = getattr(unreal, name, None)
+    getter = getattr(unreal, "get_editor_subsystem", None)
+    if cls is None or getter is None:
+        return None
     try:
-        return unreal.get_editor_subsystem(cls)
+        return getter(cls)
     except Exception:
         return None
 
 
 def current_world_path():
-    ues = subsystem(unreal.UnrealEditorSubsystem)
+    ues = subsystem("UnrealEditorSubsystem")
     world = ues.get_editor_world() if ues else unreal.EditorLevelLibrary.get_editor_world()
     return world.get_path_name() if world else ""
 
 
 def open_or_create_map():
-    les = subsystem(unreal.LevelEditorSubsystem)
+    les = subsystem("LevelEditorSubsystem")
     if current_world_path().startswith(MAP_PATH + "."):
         log("Уровень " + MAP_PATH + " уже открыт")
         return True
@@ -262,7 +316,7 @@ def open_or_create_map():
 
 
 def all_actors():
-    eas = subsystem(unreal.EditorActorSubsystem)
+    eas = subsystem("EditorActorSubsystem")
     return eas.get_all_level_actors() if eas else unreal.EditorLevelLibrary.get_all_level_actors()
 
 
@@ -272,7 +326,7 @@ def find_actors(class_name):
 
 def spawn(cls, location, rotation=None):
     rot = rotation if rotation is not None else unreal.Rotator(0.0, 0.0, 0.0)
-    eas = subsystem(unreal.EditorActorSubsystem)
+    eas = subsystem("EditorActorSubsystem")
     if eas:
         return eas.spawn_actor_from_class(cls, location, rot)
     return unreal.EditorLevelLibrary.spawn_actor_from_class(cls, location, rot)
@@ -347,7 +401,7 @@ def ensure_player_start(city):
 
 
 def save_all():
-    les = subsystem(unreal.LevelEditorSubsystem)
+    les = subsystem("LevelEditorSubsystem")
     try:
         ok = les.save_current_level() if les else unreal.EditorLevelLibrary.save_current_level()
         log("Уровень сохранён" if ok else "Уровень не сохранён (возможно, нет изменений)")

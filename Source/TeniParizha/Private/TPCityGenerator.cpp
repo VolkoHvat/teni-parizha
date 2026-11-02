@@ -9,6 +9,7 @@
 #include "TPTypes.h"
 #include "TPCityBuilder.h"
 #include "TPTexGen.h"
+#include "TPCityMaterials.h"
 #include "ProceduralMeshComponent.h"
 #include "Components/HierarchicalInstancedStaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
@@ -30,43 +31,8 @@ const FName ATPCityGenerator::TagSoft(TEXT("TPSoft"));
 
 namespace TPCityGenImpl
 {
-	/** вид материала Unreal для материала квартала */
-	enum class EMatKind : uint8 { Opaque, Masked, Emissive };
-
-	/** описание материала (порт таблицы lu_city_materials): линейные цвета палитры, разброс, шероховатость, металл, повтор UV */
-	struct FMatDesc
-	{
-		TPTexGen::EType Tex;
-		float C0[3];
-		float C1[3];
-		float Var;
-		float Rough;
-		float Metal;
-		float UVScale;
-		EMatKind Kind;
-	};
-
-	// порядок — как TPCity::EMat
-	static const FMatDesc MatDescs[TPCity::CM_Num] = {
-		{ TPTexGen::EType::StoneBlocks, { .62f, .56f, .45f }, { .74f, .68f, .56f }, .12f, .80f, 0.f, 1.f, EMatKind::Opaque },   // камень (известняк)
-		{ TPTexGen::EType::Plaster,     { .70f, .66f, .58f }, { .80f, .76f, .68f }, .10f, .90f, 0.f, 1.f, EMatKind::Opaque },   // штукатурка
-		{ TPTexGen::EType::Brick,       { .42f, .17f, .10f }, { .55f, .25f, .15f }, .15f, .85f, 0.f, 1.f, EMatKind::Opaque },   // кирпич
-		{ TPTexGen::EType::Slate,       { .13f, .15f, .19f }, { .20f, .22f, .27f }, .20f, .50f, 0.f, 1.f, EMatKind::Opaque },   // шифер
-		{ TPTexGen::EType::RoofTiles,   { .45f, .17f, .08f }, { .60f, .27f, .13f }, .20f, .70f, 0.f, 1.f, EMatKind::Opaque },   // черепица
-		{ TPTexGen::EType::Wood,        { .35f, .23f, .14f }, { .50f, .34f, .20f }, .15f, .75f, 0.f, 1.f, EMatKind::Opaque },   // дерево
-		{ TPTexGen::EType::Shutter,     { .80f, .80f, .80f }, { .90f, .90f, .90f }, .05f, .70f, 0.f, 1.f, EMatKind::Opaque },   // ставни (цвет в вершинах)
-		{ TPTexGen::EType::Metal,       { .05f, .05f, .06f }, { .08f, .08f, .09f }, .10f, .45f, 1.f, 1.f, EMatKind::Opaque },   // кованое железо
-		{ TPTexGen::EType::Flat,        { .90f, .90f, .90f }, { .90f, .90f, .90f }, 0.f,  .08f, .2f, 1.f, EMatKind::Opaque },   // стекло
-		{ TPTexGen::EType::Cobble,      { .30f, .29f, .27f }, { .45f, .43f, .40f }, .20f, .80f, 0.f, .5f, EMatKind::Opaque },   // булыжник
-		{ TPTexGen::EType::Flagstone,   { .50f, .47f, .42f }, { .62f, .58f, .52f }, .10f, .80f, 0.f, .35f, EMatKind::Opaque },  // плиты
-		{ TPTexGen::EType::Cloth,       { .90f, .90f, .90f }, { 1.f,  1.f,  1.f  }, .05f, .95f, 0.f, 2.f, EMatKind::Masked },   // ткань (двусторонняя)
-		{ TPTexGen::EType::Flat,        { 1.f,  1.f,  1.f  }, { 1.f,  1.f,  1.f  }, 0.f,  .60f, 0.f, 1.f, EMatKind::Opaque },   // крашеное дерево (переплёты)
-		{ TPTexGen::EType::Dirt,        { .60f, .55f, .45f }, { .75f, .70f, .55f }, .20f, .95f, 0.f, 1.f, EMatKind::Opaque },   // земля / сено
-		{ TPTexGen::EType::Leaves,      { .75f, .80f, .70f }, { 1.f,  1.f,  1.f  }, .15f, .70f, 0.f, 1.f, EMatKind::Masked },   // листва (цвет в вершинах)
-		{ TPTexGen::EType::Wood,        { .25f, .20f, .16f }, { .35f, .28f, .22f }, .10f, .90f, 0.f, 2.f, EMatKind::Opaque },   // кора
-		{ TPTexGen::EType::Flat,        { 1.f,  .80f, .50f }, { 1.f,  .80f, .50f }, 0.f,  .30f, 0.f, 1.f, EMatKind::Emissive }, // стекло фонаря
-		{ TPTexGen::EType::Flat,        { .12f, .20f, .22f }, { .12f, .20f, .22f }, 0.f,  .05f, 0.f, 1.f, EMatKind::Opaque },   // вода
-	};
+	using TPCityMat::EMatKind;
+	using TPCityMat::FMatDesc;
 
 	/** цвет свечения фонаря и сила при полной яркости */
 	static const FLinearColor LampColor(1.f, .65f, .3f, 1.f);
@@ -164,7 +130,7 @@ namespace TPCityGenImpl
 		C.bLampEmissive = false;
 		for (int32 I = 0; I < TPCity::CM_Num; ++I)
 		{
-			const FMatDesc& D = MatDescs[I];
+			const FMatDesc& D = TPCityMat::Get(I);
 			UMaterialInstanceDynamic* MID = nullptr;
 			if (D.Kind == EMatKind::Emissive)
 			{
@@ -179,15 +145,12 @@ namespace TPCityGenImpl
 			}
 			else
 			{
-				TPTexGen::FPalette Pal;
-				Pal.C0 = TPTexGen::FRGB(D.C0[0], D.C0[1], D.C0[2]);
-				Pal.C1 = TPTexGen::FRGB(D.C1[0], D.C1[1], D.C1[2]);
-				Pal.Var = D.Var;
+				const TPTexGen::FPalette Pal = TPCityMat::Palette(D);
 				const bool bFlat = D.Tex == TPTexGen::EType::Flat;
 				// без базового материала нужен только средний цвет — хватает маленькой текстуры
 				const int32 N = bFlat ? 4 : (bTextured ? TexSize : 32);
 				TPTexGen::FSet Set;
-				TPTexGen::Generate(Set, D.Tex, N, Pal, 1000u + (uint32)I * 17u, D.Rough, D.Metal, bTextured);
+				TPTexGen::Generate(Set, D.Tex, N, Pal, TPCityMat::TexSeed(I), D.Rough, D.Metal, bTextured);
 				if (bTextured)
 				{
 					UMaterialInterface* Parent = D.Kind == EMatKind::Masked ? Masked : Base;
@@ -203,6 +166,8 @@ namespace TPCityGenImpl
 						if (Orm) MID->SetTextureParameterValue(TEXT("ORM"), Orm);
 						MID->SetVectorParameterValue(TEXT("Tint"), FLinearColor::White);
 						MID->SetScalarParameterValue(TEXT("UVScale"), D.UVScale);
+						// стены темнеют у земли (узел в M_TPBase из tp_setup.py; у старого материала параметра нет — вызов безвреден)
+						MID->SetScalarParameterValue(TEXT("GroundGrime"), D.GroundGrime ? 1.f : 0.f);
 					}
 				}
 				else

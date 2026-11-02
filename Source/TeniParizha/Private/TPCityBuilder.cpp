@@ -627,12 +627,45 @@ void FBuilder::Facade(const FBuilding& B, int32 Side, FRng& Rng)
 						FMeshBuf& M = Mb(A, CM_Cloth);
 						Quad(M, A, Bv, C, Dv, FV2(0.f, 0.f), FV2(O.W * 2.f, 0.f), FV2(O.W * 2.f, 1.f), FV2(0.f, 1.f), AC);
 						Quad(M, Bv, A, Dv, C, FV2(0.f, 0.f), FV2(O.W * 2.f, 0.f), FV2(O.W * 2.f, 1.f), FV2(0.f, 1.f), AC);
+						// фестоны по краю навеса (полоса и зубцы, с обеих сторон) и железные тяги к стене
+						const float VE = Top - 0.1f, DE = 1.3f, UA = U0 - 0.15f, UB = U1 + 0.15f;
+						const int32 NT = FMath::Max(3, FMath::RoundToInt((UB - UA) / 0.32f));
+						const float TW = (UB - UA) / (float)NT;
+						for (int32 K = 0; K < NT; ++K)
+						{
+							const float Ua = UA + (float)K * TW, Ub = Ua + TW;
+							const FColor TC = (K & 1) ? AC : C3(235, 228, 210);
+							const FV3 P0 = F.P(Ua, VE, DE), P1 = F.P(Ub, VE, DE), P2 = F.P(Ub, VE - 0.12f, DE), P3 = F.P(Ua, VE - 0.12f, DE), P4 = F.P(Ua + TW * 0.5f, VE - 0.24f, DE);
+							Quad(M, P3, P2, P1, P0, FV2(Ua, 0.f), FV2(Ub, 0.f), FV2(Ub, 0.25f), FV2(Ua, 0.25f), TC);
+							Quad(M, P0, P1, P2, P3, FV2(Ua, 0.f), FV2(Ub, 0.f), FV2(Ub, 0.25f), FV2(Ua, 0.25f), TC);
+							const FV3 NF = F.N, NB2 = -F.N;
+							M.Color = TC;
+							const int32 Q0 = M.Vertex(P3, NF, FV2(Ua, 0.25f)), Q1 = M.Vertex(P2, NF, FV2(Ub, 0.25f)), Q2 = M.Vertex(P4, NF, FV2(Ua + TW * 0.5f, 0.5f));
+							M.Tri(Q0, Q2, Q1);
+							const int32 R0 = M.Vertex(P3, NB2, FV2(Ua, 0.25f)), R1 = M.Vertex(P2, NB2, FV2(Ub, 0.25f)), R2 = M.Vertex(P4, NB2, FV2(Ua + TW * 0.5f, 0.5f));
+							M.Tri(R0, R1, R2);
+						}
+						FMeshBuf& MI = Mb(A, CM_Iron);
+						MI.Color = C3(32, 32, 36);
+						MbTube(MI, F.P(UA + 0.05f, Top + 1.0f, 0.f), F.P(UA + 0.05f, VE, DE - 0.02f), 0.01f, 0.01f, 4);
+						MbTube(MI, F.P(UB - 0.05f, Top + 1.0f, 0.f), F.P(UB - 0.05f, VE, DE - 0.02f), 0.01f, 0.01f, 4);
 					}
 				}
 			}
 			else
 			{
 				Window(B, F, O, FMat, bStreet || Fl > 0, bFrench, bDoor, bStreet && (Fl > 0 || bDoor), Rng);
+			}
+			// кованая вывеска на простенке справа от лавки или двери (свой хеш — раскладка Rng не меняется)
+			if (Fl == 0 && bStreet && (bShopBay || bDoor))
+			{
+				const uint32 HS = HMix(B.Seed * 7919u + (uint32)Side * 131u + (uint32)I * 17u + 11u);
+				const float SU = O.U1() + (bShopBay ? 0.3f : 0.45f);
+				if (H01(HS) < (bShopBay ? 0.5f : 0.35f) && SU < FacadeLen - 0.3f && (bDoor || I + 1 < NB))
+				{
+					const FColor Boards[4] = { C3(40, 70, 50), C3(110, 35, 30), C3(35, 50, 85), C3(25, 25, 28) };
+					HangingSign(F, SU, B.GroundH - 0.7f, (int32)((HS >> 8) & 3u), Boards[(HS >> 12) & 3u]);
+				}
 			}
 		}
 		{
@@ -1156,6 +1189,20 @@ void FBuilder::Fountain(const FV3& P, float R)
 		W.Vertex(FV3(P.X + FMath::Sin(A) * (R - 0.25f), P.Y + 0.5f, P.Z + FMath::Cos(A) * (R - 0.25f)), Up, FV2(FMath::Sin(A), FMath::Cos(A)));
 	}
 	for (int32 I = 0; I < 32; ++I) W.Tri(Base, Base + 1 + I, Base + 2 + I);
+	// четыре струи из верхней чаши дугой в бассейн (по 5 отрезков параболы)
+	for (int32 J = 0; J < 4; ++J)
+	{
+		const float A = CityPi * 0.25f + CityPi * 0.5f * (float)J, SA = FMath::Sin(A), CA = FMath::Cos(A);
+		FV3 Prev(P.X + SA * 0.2f, P.Y + 2.55f, P.Z + CA * 0.2f);
+		for (int32 K = 1; K <= 5; ++K)
+		{
+			const float T = (float)K / 5.f;
+			const float RR = 0.2f + (R - 1.0f) * T, YY = 2.55f + 0.35f * T - 2.4f * T * T;
+			const FV3 Cur(P.X + SA * RR, P.Y + YY, P.Z + CA * RR);
+			MbTube(W, Prev, Cur, 0.035f, 0.03f, 5);
+			Prev = Cur;
+		}
+	}
 	// столкновения: кольцо из коробок и столб
 	for (int32 I = 0; I < 12; ++I)
 	{
@@ -1177,6 +1224,260 @@ void FBuilder::Crates(const FV3& P, int32 Count, uint32 Seed)
 		if (I >= 2) { Q.X = P.X + 0.5f; Q.Y = P.Y + (float)(I - 1) * 0.95f; }   // ступенькой вверх — удобно забираться
 		Box(CM_Wood, FV3(Q.X - S * 0.5f, Q.Y, Q.Z - S * 0.5f), FV3(Q.X + S * 0.5f, Q.Y + S * 0.95f, Q.Z + S * 0.5f), 1.f / S, C3(170, 130, 90), true);
 	}
+}
+
+// ---------------------------------------------------------------- улица: бочки, телеги, тумбы, водостоки, бордюры, вывески, фонари на верёвках
+
+void FBuilder::Barrel(const FV3& P, const FV3& Dir, bool bLying, bool bCollide)
+{
+	// клёпки (доски дерева вдоль оси), четыре железных обруча, днища; лежачая — та же бочка, ось вдоль локальной +X
+	const float HB = 0.9f, RB = 0.36f;
+	bool bBuild = false;
+	const int32 Mod = BeginModule(FModKey(11).Int(bLying ? 1 : 0).H, EModCull::Large, "бочка", bBuild);
+	if (bBuild)
+	{
+		const FV3 O(0.f, 0.f, 0.f);
+		FMeshBuf& W = Mb(O, CM_Wood);
+		FMeshBuf& I = Mb(O, CM_Iron);
+		const int32 W0 = W.NumVerts(), I0 = I.NumVerts();
+		W.Color = C3(150, 112, 78);
+		const FV2 Prof[5] = { FV2(0.29f, 0.f), FV2(0.33f, 0.15f), FV2(RB, 0.45f), FV2(0.33f, 0.75f), FV2(0.29f, HB) };
+		MbLathe(W, O, Prof, 5, 14, 2.f);
+		W.Color = C3(120, 88, 60);
+		MbCylinder(W, FV3(0.f, 0.03f, 0.f), 0.282f, 0.282f, 0.83f, 14, true);   // днища (утоплены на 3 см)
+		I.Color = C3(45, 42, 40);
+		const float HoopY[4] = { 0.07f, 0.29f, 0.57f, 0.79f };
+		for (int32 K = 0; K < 4; ++K)
+		{
+			// радиус обруча — по профилю клёпок на середине обруча (наибольший из двух краёв) + 8 мм
+			auto ProfR = [&Prof](float Y) { for (int32 J = 0; J + 1 < 5; ++J) if (Y <= Prof[J + 1].Y) return LerpF(Prof[J].X, Prof[J + 1].X, (Y - Prof[J].Y) / (Prof[J + 1].Y - Prof[J].Y)); return Prof[4].X; };
+			const float R = FMath::Max(ProfR(HoopY[K]), ProfR(HoopY[K] + 0.04f)) + 0.008f;
+			MbCylinder(I, FV3(0.f, HoopY[K], 0.f), R, R, 0.04f, 14, false);
+		}
+		if (bLying)
+		{
+			// ось Y → +X, бочка лежит на земле, середина — в точке привязки
+			MbTransform(W, W0, FV3(0.f, 0.f, 1.f), -CityPi * 0.5f, FV3(-HB * 0.5f, RB, 0.f));
+			MbTransform(I, I0, FV3(0.f, 0.f, 1.f), -CityPi * 0.5f, FV3(-HB * 0.5f, RB, 0.f));
+		}
+		EndModule();
+	}
+	PlaceModule(Mod, P, Dir);
+	if (!bCollide) return;
+	if (bLying) PhysObb(FV3(P.X, P.Y + RB, P.Z), FMath::Atan2(-Dir.Z, Dir.X), FV3(HB * 0.5f, RB, RB));
+	else PhysBox(FV3(P.X - 0.34f, P.Y, P.Z - 0.34f), FV3(P.X + 0.34f, P.Y + HB, P.Z + 0.34f));
+}
+
+void FBuilder::Barrels(const FV3& P, const FV3& Dir, uint32 Seed)
+{
+	FRng R((uint64)Seed * 2654435761ull + 17ull);
+	const int32 N = 2 + (int32)(R.F() * 3.f);
+	for (int32 I = 0; I < N; ++I)
+	{
+		const FV3 Q = P + Dir * ((float)I * 0.74f + R.Range(-0.03f, 0.03f));
+		const float A = R.Range(0.f, CityTau);
+		Barrel(FV3(Q.X, P.Y, Q.Z), FV3(FMath::Cos(A), 0.f, FMath::Sin(A)), false);
+	}
+	// одна лежит сверху между двумя стоячими (по ней удобно забираться выше)
+	if (N >= 2 && R.F() < 0.6f)
+	{
+		const FV3 Q = P + Dir * 0.37f;
+		const FV3 Side = Cross(Dir, FV3(0.f, 1.f, 0.f));
+		Barrel(FV3(Q.X, P.Y + 0.9f, Q.Z), Side, true);
+	}
+}
+
+void FBuilder::Cart(const FV3& P, float Yaw, uint32 Seed)
+{
+	const FV3 Up(0.f, 1.f, 0.f);
+	FMeshBuf& M = Mb(P, CM_Wood);
+	const int32 S0 = M.NumVerts();
+	M.Color = C3(125, 92, 62);
+	MbBox(M, FV3(-1.1f, 0.6f, -0.72f), FV3(1.1f, 0.7f, 0.72f), 0.5f);                 // настил
+	MbBox(M, FV3(-1.1f, 0.7f, -0.76f), FV3(1.1f, 0.95f, -0.7f), 0.5f);                // борта
+	MbBox(M, FV3(-1.1f, 0.7f, 0.7f), FV3(1.1f, 0.95f, 0.76f), 0.5f);
+	MbBox(M, FV3(-1.16f, 0.7f, -0.76f), FV3(-1.1f, 0.95f, 0.76f), 0.5f);              // задний борт
+	MbBox(M, FV3(-0.15f, 0.42f, -0.85f), FV3(0.15f, 0.6f, 0.85f), 0.5f);              // ось
+	for (int32 I = 0; I < 2; ++I)
+	{
+		const float ZW = I ? 0.86f : -0.96f;
+		const int32 W0 = M.NumVerts();
+		MbCylinder(M, FV3(0.f, 0.f, 0.f), 0.55f, 0.55f, 0.1f, 18, true);                // колесо
+		MbTransform(M, W0, FV3(1.f, 0.f, 0.f), CityPi * 0.5f, FV3(0.f, 0.55f, ZW));
+	}
+	MbTube(M, FV3(1.1f, 0.65f, -0.45f), FV3(2.7f, 0.5f, -0.35f), 0.05f, 0.045f, 6);   // оглобли
+	MbTube(M, FV3(1.1f, 0.65f, 0.45f), FV3(2.7f, 0.5f, 0.35f), 0.05f, 0.045f, 6);
+	MbTube(M, FV3(2.6f, 0.5f, -0.36f), FV3(2.6f, 0.f, -0.36f), 0.03f, 0.03f, 5);      // подпорка
+	MbTransform(M, S0, Up, Yaw, P);
+	FMeshBuf& I = Mb(P, CM_Iron);   // железные шины колёс
+	const int32 I0 = I.NumVerts();
+	I.Color = C3(40, 38, 36);
+	for (int32 K = 0; K < 2; ++K)
+	{
+		const float ZW = K ? 0.855f : -0.965f;
+		const int32 W0 = I.NumVerts();
+		MbCylinder(I, FV3(0.f, 0.f, 0.f), 0.565f, 0.565f, 0.11f, 18, false);
+		MbTransform(I, W0, FV3(1.f, 0.f, 0.f), CityPi * 0.5f, FV3(0.f, 0.55f, ZW));
+	}
+	MbTransform(I, I0, Up, Yaw, P);
+	PhysObb(P + Rotate(Up, Yaw, FV3(0.f, 0.475f, 0.f)), Yaw, FV3(1.13f, 0.475f, 0.78f));
+	// груз: две лежачие бочки вдоль телеги (или одна и ящик)
+	const FV3 Fwd = Rotate(Up, Yaw, FV3(1.f, 0.f, 0.f));
+	const FV3 B0 = P + Rotate(Up, Yaw, FV3(-0.52f, 0.7f, 0.f)), B1 = P + Rotate(Up, Yaw, FV3(0.48f, 0.7f, 0.f));
+	Barrel(B0, Fwd, true);
+	if (H01(HMix(Seed)) < 0.6f) Barrel(B1, Fwd, true);
+	else Box(CM_Wood, FV3(B1.X - 0.3f, B1.Y, B1.Z - 0.3f), FV3(B1.X + 0.3f, B1.Y + 0.55f, B1.Z + 0.3f), 1.5f, C3(170, 130, 90), true);
+}
+
+void FBuilder::Borne(const FV3& P)
+{
+	bool bBuild = false;
+	const int32 Mod = BeginModule(FModKey(13).H, EModCull::Medium, "тумба", bBuild);
+	if (bBuild)
+	{
+		const FV3 O(0.f, 0.f, 0.f);
+		FMeshBuf& M = Mb(O, CM_Stone);
+		M.Color = C3(205, 198, 182);
+		const FV2 Prof[7] = { FV2(0.21f, 0.f), FV2(0.21f, 0.08f), FV2(0.18f, 0.12f), FV2(0.16f, 0.5f), FV2(0.14f, 0.62f), FV2(0.11f, 0.72f), FV2(0.07f, 0.77f) };
+		MbLathe(M, O, Prof, 7, 12, 1.f);
+		MbCylinder(M, FV3(0.f, 0.765f, 0.f), 0.07f, 0.07f, 0.01f, 12, true);
+		EndModule();
+	}
+	PlaceModule(Mod, P, FV3(1.f, 0.f, 0.f));
+	PhysBox(FV3(P.X - 0.18f, P.Y, P.Z - 0.18f), FV3(P.X + 0.18f, P.Y + 0.77f, P.Z + 0.18f));
+}
+
+void FBuilder::Gutter(float X0, float Z0, float X1, float Z1)
+{
+	// полоса режется на куски по 4 м; кусок кладётся, только если он целиком на мостовой (не на тротуаре и не на площади)
+	const bool bAlongX = (X1 - X0) >= (Z1 - Z0);
+	const float L0 = bAlongX ? X0 : Z0, L1 = bAlongX ? X1 : Z1, C = bAlongX ? (Z0 + Z1) * 0.5f : (X0 + X1) * 0.5f;
+	const float HalfW = (bAlongX ? (Z1 - Z0) : (X1 - X0)) * 0.5f, Wet = 0.12f;
+	auto Strip = [this, bAlongX, C](int32 Mat, float A, float B, float HW, float Y, float UVS, FColor Col)
+	{
+		const float XA = bAlongX ? A : C - HW, XB = bAlongX ? B : C + HW, ZA = bAlongX ? C - HW : A, ZB = bAlongX ? C + HW : B;
+		FMeshBuf& M = Mb(FV3((XA + XB) * 0.5f, Y, (ZA + ZB) * 0.5f), Mat);
+		Quad(M, FV3(XA, Y, ZB), FV3(XB, Y, ZB), FV3(XB, Y, ZA), FV3(XA, Y, ZA),
+			FV2(XA * UVS, ZB * UVS), FV2(XB * UVS, ZB * UVS), FV2(XB * UVS, ZA * UVS), FV2(XA * UVS, ZA * UVS), Col);
+	};
+	for (float A = L0; A < L1 - 1e-3f; A += 4.f)
+	{
+		const float B = FMath::Min(A + 4.f, L1);
+		bool bOk = true;
+		for (int32 K = 0; K <= 4 && bOk; ++K)
+		{
+			const float T = LerpF(A, B, (float)K / 4.f);
+			for (int32 S = -1; S <= 1 && bOk; S += 2)
+			{
+				const float SX = bAlongX ? T : C + (float)S * HalfW, SZ = bAlongX ? C + (float)S * HalfW : T;
+				bOk = GroundHeight(SX, SZ) < 0.01f;
+			}
+		}
+		if (!bOk) continue;
+		Strip(CM_Cobble, A, B, HalfW, 0.006f, 2.2f, C3(150, 142, 132));  // ложе из мелкого тёмного (мокрого) булыжника
+		Strip(CM_Cobble, A, B, Wet, 0.009f, 2.2f, C3(95, 92, 88));        // самая мокрая середина
+	}
+}
+
+void FBuilder::Curb(float X0, float Z0, float X1, float Z1, float Y)
+{
+	const float W = 0.22f, Top = Y + 0.015f, Bot = -0.02f;
+	const FColor Col = C3(200, 195, 186);
+	Box(CM_Flag, FV3(X0, Bot, Z0), FV3(X1, Top, Z0 + W), 1.2f, Col, false);
+	Box(CM_Flag, FV3(X0, Bot, Z1 - W), FV3(X1, Top, Z1), 1.2f, Col, false);
+	Box(CM_Flag, FV3(X0, Bot, Z0 + W), FV3(X0 + W, Top, Z1 - W), 1.2f, Col, false);
+	Box(CM_Flag, FV3(X1 - W, Bot, Z0 + W), FV3(X1, Top, Z1 - W), 1.2f, Col, false);
+}
+
+void FBuilder::HangingSign(const FFacadeFrame& F, float U, float V, int32 Kind, FColor Board)
+{
+	Kind = Kind & 3;
+	bool bBuild = false;
+	const int32 Mod = BeginModule(FModKey(12).Int(Kind).Col(Board).H, EModCull::Medium, "вывеска", bBuild);
+	if (bBuild)
+	{
+		const FFacadeFrame L = LocalFrame();
+		const FV3 O(0.f, 0.f, 0.f);
+		// кованый кронштейн: накладка на стене, плечо, подкос, крючки
+		FMeshBuf& I = Mb(O, CM_Iron);
+		I.Color = C3(32, 32, 36);
+		FacadeBox(I, L, -0.07f, 0.07f, -0.3f, 0.1f, 0.f, 0.02f, 1.f, BF_All);
+		FacadeBox(I, L, -0.02f, 0.02f, -0.03f, 0.03f, 0.02f, 1.12f, 1.f, BF_All);
+		MbTube(I, L.P(0.f, -0.26f, 0.02f), L.P(0.f, -0.02f, 0.72f), 0.014f, 0.014f, 5);
+		MbSphere(I, L.P(0.f, 0.f, 1.14f), FV3(0.035f, 0.035f, 0.035f), 6, 4);
+		FacadeBox(I, L, -0.008f, 0.008f, -0.14f, -0.03f, 0.37f, 0.39f, 1.f, BF_All);
+		FacadeBox(I, L, -0.008f, 0.008f, -0.14f, -0.03f, 0.95f, 0.97f, 1.f, BF_All);
+		// доска (плоскость доски — поперёк улицы, видна с обеих сторон) и золочёная рамка
+		const float D0 = 0.3f, D1 = 1.04f, V0 = -0.74f, V1 = -0.14f;
+		FMeshBuf& T = Mb(O, CM_Trim);
+		T.Color = Board;
+		FacadeBox(T, L, -0.025f, 0.025f, V0, V1, D0, D1, 1.f, BF_All);
+		const FColor Gold = C3(205, 165, 70);
+		T.Color = Gold;
+		FacadeBox(T, L, -0.032f, 0.032f, V1 - 0.03f, V1, D0, D1, 1.f, BF_All);
+		FacadeBox(T, L, -0.032f, 0.032f, V0, V0 + 0.03f, D0, D1, 1.f, BF_All);
+		FacadeBox(T, L, -0.032f, 0.032f, V0 + 0.03f, V1 - 0.03f, D0, D0 + 0.03f, 1.f, BF_All);
+		FacadeBox(T, L, -0.032f, 0.032f, V0 + 0.03f, V1 - 0.03f, D1 - 0.03f, D1, 1.f, BF_All);
+		// знак ремесла выступает с обеих сторон доски
+		const float SU = 0.04f;
+		auto Sym = [&T, &L, SU](float A0, float A1, float B0, float B1) { FacadeBox(T, L, -SU, SU, B0, B1, A0, A1, 1.f, BF_All); };
+		switch (Kind)
+		{
+		case 0:   // ключ (слесарь)
+			Sym(0.42f, 0.5f, -0.4f, -0.37f); Sym(0.42f, 0.5f, -0.53f, -0.5f); Sym(0.42f, 0.45f, -0.5f, -0.4f); Sym(0.47f, 0.5f, -0.5f, -0.4f);
+			Sym(0.5f, 0.88f, -0.46f, -0.44f); Sym(0.8f, 0.83f, -0.56f, -0.46f); Sym(0.86f, 0.88f, -0.53f, -0.46f);
+			break;
+		case 1:   // сапог (сапожник)
+			Sym(0.56f, 0.69f, -0.6f, -0.3f); Sym(0.56f, 0.88f, -0.62f, -0.54f); Sym(0.55f, 0.6f, -0.66f, -0.62f); Sym(0.54f, 0.71f, -0.33f, -0.29f);
+			break;
+		case 2:   // бочонок (виноторговец): тело и обручи
+			T.Color = C3(120, 80, 45);
+			Sym(0.52f, 0.82f, -0.6f, -0.28f);
+			T.Color = Gold;
+			Sym(0.5f, 0.84f, -0.37f, -0.35f); Sym(0.5f, 0.84f, -0.53f, -0.51f);
+			break;
+		default:   // кружка (трактир): кружка, ручка, пена
+			Sym(0.5f, 0.74f, -0.62f, -0.32f); Sym(0.74f, 0.84f, -0.4f, -0.37f); Sym(0.74f, 0.84f, -0.56f, -0.53f); Sym(0.81f, 0.84f, -0.53f, -0.4f);
+			T.Color = C3(240, 235, 220);
+			Sym(0.49f, 0.75f, -0.32f, -0.27f);
+			break;
+		}
+		EndModule();
+	}
+	PlaceModule(Mod, F.P(U, V, 0.f), F.R);
+}
+
+void FBuilder::RopeLantern(const FV3& A, const FV3& B, float Sag)
+{
+	// верёвка — два отрезка до фонаря посередине
+	const FV3 Mid = (A + B) * 0.5f - FV3(0.f, Sag, 0.f);
+	FMeshBuf& R = Mb(Mid, CM_Wood);
+	R.Color = C3(85, 72, 55);
+	MbTube(R, A, Mid, 0.012f, 0.012f, 4);
+	MbTube(R, Mid, B, 0.012f, 0.012f, 4);
+	// крюки на стенах
+	FMeshBuf& K = Mb(A, CM_Iron);
+	K.Color = C3(32, 32, 36);
+	MbSphere(K, A, FV3(0.04f, 0.04f, 0.04f), 6, 4);
+	MbSphere(K, B, FV3(0.04f, 0.04f, 0.04f), 6, 4);
+	bool bBuild = false;
+	const int32 Mod = BeginModule(FModKey(14).H, EModCull::Large, "фонарь на верёвке", bBuild);
+	if (bBuild)
+	{
+		// шестигранный фонарь: колпак, стёкла, поддон, кольцо подвеса (низ фонаря — 0.85 м под верёвкой)
+		const FV3 O(0.f, 0.f, 0.f);
+		FMeshBuf& I = Mb(O, CM_Iron);
+		I.Color = C3(30, 30, 34);
+		MbCylinder(I, FV3(0.f, -0.12f, 0.f), 0.012f, 0.012f, 0.12f, 4, false);
+		MbCylinder(I, FV3(0.f, -0.33f, 0.f), 0.2f, 0.035f, 0.21f, 6, true);
+		MbCylinder(I, FV3(0.f, -0.85f, 0.f), 0.07f, 0.14f, 0.08f, 6, true);
+		FMeshBuf& G = Mb(O, CM_Lamp);
+		G.Color = White;
+		MbCylinder(G, FV3(0.f, -0.77f, 0.f), 0.14f, 0.18f, 0.44f, 6, true);
+		EndModule();
+	}
+	PlaceModule(Mod, Mid, FV3(1.f, 0.f, 0.f));
+	LampPts.Add(Mid - FV3(0.f, 0.55f, 0.f));
 }
 
 // ---------------------------------------------------------------- проверки для точек
@@ -1375,7 +1676,19 @@ void FBuilder::BuildLevel(int32 Seed)
 		{
 			const float QX0 = BXS[BI][0], QX1 = BXS[BI][1], QZ0 = BZS[BJ][0], QZ1 = BZS[BJ][1];
 			Ground(CM_Flag, QX0 - 2.f, QZ0 - 2.f, QX1 + 2.f, QZ1 + 2.f, 0.12f, 1.f, true);
+			Curb(QX0 - 2.f, QZ0 - 2.f, QX1 + 2.f, QZ1 + 2.f, 0.12f);
 			const float XM = (QX0 + QX1) * 0.5f, Alley = 3.2f, ZM = (QZ0 + QZ1) * 0.5f;
+			// тумбы-отбойники на углах квартала и у входов в переулок; фонари на верёвках поперёк переулка
+			const float BY = 0.12f;
+			Borne(FV3(QX0 - 0.35f, BY, QZ0 - 0.35f)); Borne(FV3(QX1 + 0.35f, BY, QZ0 - 0.35f));
+			Borne(FV3(QX0 - 0.35f, BY, QZ1 + 0.35f)); Borne(FV3(QX1 + 0.35f, BY, QZ1 + 0.35f));
+			Borne(FV3(XM - Alley * 0.5f + 0.3f, BY, QZ0 + 0.3f)); Borne(FV3(XM + Alley * 0.5f - 0.3f, BY, QZ0 + 0.3f));
+			Borne(FV3(XM - Alley * 0.5f + 0.3f, BY, QZ1 - 0.3f)); Borne(FV3(XM + Alley * 0.5f - 0.3f, BY, QZ1 - 0.3f));
+			RopeLantern(FV3(XM - Alley * 0.5f, 5.6f, ZM - 6.f), FV3(XM + Alley * 0.5f, 5.6f, ZM - 6.f), 0.35f);
+			RopeLantern(FV3(XM - Alley * 0.5f, 5.6f, ZM + 6.f), FV3(XM + Alley * 0.5f, 5.6f, ZM + 6.f), 0.35f);
+			// бочки у стен возле углов квартала (не у дверей: двери — в середине домов)
+			Barrels(FV3(QX0 + 0.8f, BY, QZ0 - 0.45f), FV3(1.f, 0.f, 0.f), (uint32)(BI * 2 + BJ) * 3u + 1u);
+			Barrels(FV3(QX1 - 0.8f, BY, QZ1 + 0.45f), FV3(-1.f, 0.f, 0.f), (uint32)(BI * 2 + BJ) * 3u + 2u);
 			const float Lots[4][4] = {
 				{ QX0, QZ0, XM - Alley * 0.5f, ZM }, { XM + Alley * 0.5f, QZ0, QX1, ZM },
 				{ QX0, ZM, XM - Alley * 0.5f, QZ1 }, { XM + Alley * 0.5f, ZM, QX1, QZ1 } };
@@ -1418,7 +1731,25 @@ void FBuilder::BuildLevel(int32 Seed)
 	// площадь (между кварталами по центру)
 	const float PX0 = 30.f, PX1 = 104.f, PZ0 = 34.f, PZ1 = 74.f;
 	Ground(CM_Flag, PX0, PZ0, PX1, PZ1, 0.06f, 0.7f, true);
+	Curb(PX0, PZ0, PX1, PZ1, 0.06f);
 	auto At = [this](float X, float Z) { return FV3(X, GroundHeight(X, Z), Z); };
+	// водостоки посреди улиц (кладутся только на мостовой)
+	Gutter(-20.f, 30.6f, 160.f, 31.4f); Gutter(-20.f, 76.6f, 160.f, 77.4f);
+	Gutter(-20.f, -11.4f, 160.f, -10.6f); Gutter(-20.f, 124.6f, 160.f, 125.4f);
+	Gutter(33.6f, -20.f, 34.4f, 140.f); Gutter(85.6f, -20.f, 86.4f, 140.f);
+	Gutter(-11.4f, -20.f, -10.6f, 140.f); Gutter(147.6f, -20.f, 148.4f, 140.f);
+	// фонари на верёвках поперёк улицы между первым и вторым кварталом (дома по обе стороны)
+	for (int32 BJ = 0; BJ < 2; ++BJ)
+	{
+		for (int32 K = 0; K < 2; ++K)
+		{
+			const float Z = BZS[BJ][0] + 7.f + (float)K * 12.f;
+			RopeLantern(FV3(BXS[0][1], 6.2f, Z), FV3(BXS[1][0], 6.2f, Z), 0.8f);
+		}
+	}
+	// телеги с бочками и бочки у лавок на площади
+	Cart(At(-8.5f, 12.f), CityPi * 0.5f, 1u); Cart(At(80.f, 14.f), 0.25f, 2u); Cart(At(150.5f, 95.f), -CityPi * 0.5f, 3u); Cart(At(99.f, 46.f), 2.6f, 4u);
+	Barrels(At(41.f, 37.6f), FV3(1.f, 0.f, 0.f), 41u); Barrels(At(93.f, 70.4f), FV3(-1.f, 0.f, 0.f), 42u);
 	Fountain(At(67.f, 54.f), 3.4f);
 	for (int32 I = 0; I < 6; ++I) Stall(At(44.f + (float)I * 4.2f, 40.f), 0.f, (I & 1) ? C3(170, 40, 40) : C3(230, 220, 200));
 	for (int32 I = 0; I < 6; ++I) Stall(At(70.f + (float)I * 4.2f, 68.f), CityPi, (I & 1) ? C3(40, 80, 140) : C3(200, 170, 60));

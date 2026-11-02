@@ -172,6 +172,22 @@ namespace TPCity
 		void Stall(const FV3& P, float Yaw, FColor Awning);
 		void Fountain(const FV3& P, float R);
 		void Crates(const FV3& P, int32 Count, uint32 Seed);
+		/** бочка (модуль): стоячая или лёжа вдоль Dir (горизонтальное единичное направление) */
+		void Barrel(const FV3& P, const FV3& Dir, bool bLying, bool bCollide = true);
+		/** группа бочек у стены (от 2 до 5, одна-две лёжа сверху) */
+		void Barrels(const FV3& P, const FV3& Dir, uint32 Seed);
+		/** телега-двуколка с бочками (не мягкая, по ней можно лазать) */
+		void Cart(const FV3& P, float Yaw, uint32 Seed);
+		/** каменная тумба-отбойник (chasse-roue) на углу дома или у ворот */
+		void Borne(const FV3& P);
+		/** уличный водосток посреди мостовой: полоса мелкого тёмного булыжника, середина темнее (только там, где мостовая на нуле) */
+		void Gutter(float X0, float Z0, float X1, float Z1);
+		/** бордюр приподнятой площадки (тротуара, площади): камни по периметру прямоугольника */
+		void Curb(float X0, float Z0, float X1, float Z1, float Y);
+		/** кованая вывеска на кронштейне (enseigne): рамка фасада F, U вдоль стены, V — высота кронштейна, Kind 0..3 */
+		void HangingSign(const FFacadeFrame& F, float U, float V, int32 Kind, FColor Board);
+		/** фонарь (réverbère) на верёвке поперёк улицы между точками A и B на стенах; провисание Sag м */
+		void RopeLantern(const FV3& A, const FV3& B, float Sag);
 
 		/** высота мостовой/тротуара/площади в точке (для точек прогулок и фонарей) */
 		float GroundHeight(float X, float Z) const;

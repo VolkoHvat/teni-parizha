@@ -1,7 +1,9 @@
 /* Тени Парижа — превью квартала: читает геометрию из dump_scene и рисует её рендером Lutèce без окна (EGL/Mesa)
    с процедурными материалами города (lu_city_materials). Запуск: render_city scene.bin out.ppm вид [час]
    Виды ряда домов: street (с тротуара), elev (фасады прямо), win (окна вблизи), door (первый этаж), corner (угол снизу),
-   roof (сверху на карнизы), balc (балкон), dormer (слуховые окна); квартала: level. */
+   roof (сверху на карнизы), balc (балкон), dormer (слуховые окна); квартала: level (сверху), lstreet (улица между
+   кварталами с уровня глаз), lsquare (площадь с фонтаном), lroof (с крыши на площадь), lalley (переулок).
+   Пятый аргумент — файл текстур из dump_tex (TPTexGen, как в игре, с выветриванием) вместо текстур Lutèce. */
 #include "platform/lu_platform.h"
 #include "gfx/lu_gfx.h"
 #include "world/lu_city.h"
@@ -14,7 +16,7 @@ int lu_headless_snapshot(const char *path);
 static lu_mesh MESH[MAXM]; static int MAT[MAXM], NM;
 
 int main(int argc, char **argv) {
-    if (argc < 4) { printf("render_city scene.bin out.ppm вид [час]\n"); return 1; }
+    if (argc < 4) { printf("render_city scene.bin out.ppm вид [час] [текстуры.bin]\n"); return 1; }
     const char *view = argv[3]; float tod = argc > 4 ? (float)atof(argv[4]) : 15.5f;
     const int W = 1600, H = 1000;
     lu_window_desc wd = {"city", W, H, 0, 0, 0};
@@ -44,6 +46,21 @@ int main(int argc, char **argv) {
     fclose(f);
     static lu_material mats[LU_CM_N]; static lu_texture tex[LU_CM_N][3];
     lu_city_materials(mats, tex, 512);
+    if (argc > 5) {   /* текстуры TPTexGen: [материал, размер] + альбедо, нормали, ORM (RGBA8) */
+        FILE *tf = fopen(argv[5], "rb"); if (!tf) return 7;
+        static lu_texture ttex[LU_CM_N][3]; int hdr[2];
+        while (fread(hdr, 4, 2, tf) == 2) {
+            const int n = hdr[1], m = hdr[0]; unsigned char *px = malloc((size_t)n * n * 4);
+            for (int k = 0; k < 3; k++) {
+                if (fread(px, 4, (size_t)n * n, tf) != (size_t)n * n) return 8;
+                ttex[m][k] = lu_texture_create(n, n, px, k == 0 ? (LU_TEX_SRGB | LU_TEX_MIPS) : LU_TEX_MIPS);
+            }
+            free(px);
+            if (m >= 0 && m < LU_CM_N && m != LU_CM_LEAVES) {   /* листва: в Lutèce нет отсечения по альфе — оставляем её материал */
+                 mats[m].albedo = &ttex[m][0]; mats[m].normal = &ttex[m][1]; mats[m].orm = &ttex[m][2]; mats[m].roughness = 1; mats[m].metallic = 1; mats[m].flags |= LU_MAT_VCOLOR; }   /* в UE базовый материал всегда умножает на цвет вершин */
+        }
+        fclose(tf);
+    }
     lu_env e = lu_env_default();
     float ang = (tod - 6) / 12.f * LU_PI; e.sun_dir = v3_norm(V3(-cosf(ang) * .7f, sinf(ang), -.55f)); e.time = 3;
     /* камеры (улица — со стороны −Z, дома от x = 0 до 61, глубина 10 м) */
@@ -56,6 +73,10 @@ int main(int argc, char **argv) {
     else if (!strcmp(view, "shop")) cam = (lu_camera){V3(46.f, 1.7f, -6.f), V3(53.f, 2.5f, 0), V3(0, 1, 0), .9f, .1f, 300.f};
     else if (!strcmp(view, "balc")) cam = (lu_camera){V3(3.f, 6.5f, -4.f), V3(6.5f, 4.6f, 0.5f), V3(0, 1, 0), .8f, .1f, 300.f};
     else if (!strcmp(view, "dormer")) cam = (lu_camera){V3(8.f, 21.f, -5.f), V3(5.f, 17.3f, 0.5f), V3(0, 1, 0), .8f, .1f, 300.f};
+    else if (!strcmp(view, "lstreet")) cam = (lu_camera){V3(35.2f, 1.75f, -6.f), V3(33.5f, 4.2f, 14.f), V3(0, 1, 0), 1.0f, .1f, 400.f};
+    else if (!strcmp(view, "lsquare")) cam = (lu_camera){V3(52.f, 1.75f, 49.f), V3(67.f, 2.6f, 54.f), V3(0, 1, 0), 1.0f, .1f, 400.f};
+    else if (!strcmp(view, "lroof")) cam = (lu_camera){V3(22.f, 21.f, 22.f), V3(60.f, 4.f, 52.f), V3(0, 1, 0), 1.0f, .1f, 600.f};
+    else if (!strcmp(view, "lalley")) cam = (lu_camera){V3(15.f, 1.75f, -3.5f), V3(15.f, 3.5f, 13.f), V3(0, 1, 0), 1.0f, .1f, 400.f};
     else if (!strcmp(view, "level")) cam = (lu_camera){V3(-25, 40, -35), V3(55, 0, 50), V3(0, 1, 0), .9f, .5f, 900.f};
     for (int pass = 0; pass < 2; pass++) {
         lu_gfx_begin(W, H, lu_platform_fbo()); lu_gfx_camera(&cam); lu_gfx_env(&e);

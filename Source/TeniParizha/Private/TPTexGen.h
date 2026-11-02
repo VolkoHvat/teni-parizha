@@ -28,6 +28,8 @@ namespace TPTexGen
 	{
 		FRGB C0, C1;
 		float Var = 0.f;
+		/** выветривание 0..1: подтёки дождя, копоть, сколы, лишайник, грязь в швах, лужи (зависит от вида материала) */
+		float Weather = 0.f;
 	};
 
 	/** набор текстур одного материала; Mips[0] — полный размер N×N, далее до 1×1 */
@@ -50,6 +52,12 @@ namespace TPTexGen
 	/** бесшовный шум с периодом P (в клетках), примерно −1..1 */
 	float Noise(float X, float Y, int32 P, uint32 Seed);
 	float Fbm(float X, float Y, int32 P, int32 Octaves, uint32 Seed);
+	/**
+	 * Подтёки: тёмные вертикальные полосы, бесшовные по U и V. Возвращает 0..1. V текстуры растёт вверх по стене
+	 * (так развёрнуты фасады), поэтому подтёк начинается в точке и тянется в сторону меньших V, ослабевая.
+	 * Cols — число «столбцов» на повтор, Density — доля столбцов с подтёком, MaxLen — наибольшая длина (доля повтора).
+	 */
+	float Streaks(float U, float V, int32 Cols, float Density, float MaxLen, uint32 Seed);
 	/** ячейки Вороного: расстояние до ближайшего центра (F1), до второго (F2), хеш ячейки */
 	void Voronoi(float X, float Y, int32 P, uint32 Seed, float& F1, float& F2, uint32& Id);
 }
