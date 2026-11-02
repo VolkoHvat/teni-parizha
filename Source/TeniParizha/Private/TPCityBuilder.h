@@ -90,6 +90,8 @@ namespace TPCity
 		FV3 P(float U, float V, float D) const { return O + R * U + FV3(0.f, V, 0.f) + N * D; }
 	};
 
+	struct FOpening;   // проём (TPCityElements.h)
+
 	class FBuilder
 	{
 	public:
@@ -152,7 +154,8 @@ namespace TPCity
 		void RoofTri(int32 Mat, const FV3& A, const FV3& B, const FV3& C, float UVS);
 		/** горизонтальная грань проёма (верх ниши смотрит вниз, низ — вверх) на высоте V от глубины D0 до D1 */
 		void Soffit(int32 Mat, const FFacadeFrame& F, float U0, float U1, float V, float D0, float D1, float UVS, FColor Col, bool bFaceUp);
-		void Window(const FBuilding& B, const FFacadeFrame& F, int32 WM, float UC, float V0, float W, float H, bool bDetail, bool bFrench, bool bDoor, FRng& Rng);
+		/** окно или дверь в нише: откосы, стекло/полотно, переплёт, наличник, подоконник, замок, сандрик, ставни */
+		void Window(const FBuilding& B, const FFacadeFrame& F, const FOpening& O, int32 WM, bool bDetail, bool bFrench, bool bDoor, bool bSurround, FRng& Rng);
 		void Facade(const FBuilding& B, int32 Side, FRng& Rng);
 		void Chimney(const FV3& Base, float H, FColor Tint);
 		void RoofOf(const FBuilding& B, FRng& Rng);

@@ -17,3 +17,4 @@ legacy/**/*.exe
 legacy/**/*.o
 __pycache__/
 Tools/AnimTest/out/
+Tools/CityTest/out/
