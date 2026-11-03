@@ -18,3 +18,4 @@ legacy/**/*.o
 __pycache__/
 Tools/AnimTest/out/
 Tools/CityTest/out/
+Tools/OutfitTest/out/
